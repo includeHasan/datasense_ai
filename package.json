@@ -1,0 +1,50 @@
+{
+  "name": "datasense-ai-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p .",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "eval": "tsx scripts/eval/run-eval.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.0.0",
+    "@fastify/multipart": "^9.0.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/jwt": "^9.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "bcryptjs": "^2.4.3",
+    "@langchain/langgraph": "^1.0.0",
+    "@langchain/core": "^1.0.0",
+    "@langchain/openai": "^1.0.0",
+    "langchain": "^1.0.0",
+    "zod": "^3.23.8",
+    "@duckdb/node-api": "1.5.4-r.1",
+    "xlsx": "^0.18.5",
+    "pg": "^8.12.0",
+    "mysql2": "^3.11.0",
+    "better-sqlite3": "^12.4.1",
+    "node-sql-parser": "^4.18.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2",
+    "tsx": "^4.19.0",
+    "vitest": "^2.1.1",
+    "eslint": "^9.11.1",
+    "@typescript-eslint/parser": "^8.7.0",
+    "@typescript-eslint/eslint-plugin": "^8.7.0",
+    "@types/node": "^20.16.5",
+    "@types/pg": "^8.11.10",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/bcryptjs": "^2.4.6"
+  }
+}

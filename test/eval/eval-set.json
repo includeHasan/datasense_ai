@@ -1,0 +1,22 @@
+[
+  {
+    "question": "What is the total amount of sales across all regions?",
+    "expectedDescription": "A single KPI-style number equal to the sum of the amount column across all rows."
+  },
+  {
+    "question": "Which region had the highest sales?",
+    "expectedDescription": "The single region name with the maximum aggregated sales value, likely shown as a bar chart sorted descending."
+  },
+  {
+    "question": "Show me sales by month for the last year.",
+    "expectedDescription": "A line or bar chart with one data point per month, ordered chronologically, showing aggregated sales per month."
+  },
+  {
+    "question": "How many customers made more than one purchase?",
+    "expectedDescription": "A single count value derived from grouping by customer and filtering for a purchase count greater than one."
+  },
+  {
+    "question": "List the top 10 customers by total spend.",
+    "expectedDescription": "A table with 10 rows showing customer name and total spend, sorted descending by spend."
+  }
+]

@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Testing / coverage
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Data / uploads (user-provided source files & generated exports)
+data/
+uploads/
+tmp/
+*.duckdb
+*.duckdb.wal
+
+# Eval / reports / exports
+scripts/eval/output/
+report.md
+*.pdf
+exports/
+
+# Playwright MCP session artifacts
+.playwright-mcp/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Misc
+*.local

@@ -1,0 +1,231 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-greenbar: var(--greenbar);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-plex-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Ledger & greenbar: paper background, pine accent, ink text. See
+     DESIGN.md-equivalent notes in globals.css history — grounded in
+     accountant's ledger paper and vintage greenbar printout stock, not a
+     generic warm-cream or near-black AI default. */
+  --background: oklch(0.98 0.006 120);
+  --foreground: oklch(0.22 0.02 155);
+  --greenbar: oklch(0.965 0.016 145);
+  --greenbar-line: oklch(0.88 0.03 145);
+  --card: oklch(0.995 0.004 120);
+  --card-foreground: oklch(0.22 0.02 155);
+  --popover: oklch(0.995 0.004 120);
+  --popover-foreground: oklch(0.22 0.02 155);
+  --primary: oklch(0.42 0.09 155);
+  --primary-foreground: oklch(0.98 0.006 120);
+  --secondary: oklch(0.94 0.035 145);
+  --secondary-foreground: oklch(0.22 0.02 155);
+  --muted: oklch(0.94 0.03 140);
+  --muted-foreground: oklch(0.42 0.03 150);
+  --accent: oklch(0.9 0.045 145);
+  --accent-foreground: oklch(0.22 0.02 155);
+  --destructive: oklch(0.55 0.16 35);
+  --border: oklch(0.85 0.02 145);
+  --input: oklch(0.85 0.02 145);
+  --ring: oklch(0.42 0.09 155);
+  --chart-1: oklch(0.42 0.09 155);
+  --chart-2: oklch(0.55 0.14 60);
+  --chart-3: oklch(0.55 0.16 35);
+  --chart-4: oklch(0.5 0.08 220);
+  --chart-5: oklch(0.65 0.1 145);
+  --radius: 0.3rem;
+  --sidebar: oklch(0.985 0.004 120);
+  --sidebar-foreground: oklch(0.22 0.02 155);
+  --sidebar-primary: oklch(0.42 0.09 155);
+  --sidebar-primary-foreground: oklch(0.98 0.006 120);
+  --sidebar-accent: oklch(0.94 0.035 145);
+  --sidebar-accent-foreground: oklch(0.22 0.02 155);
+  --sidebar-border: oklch(0.85 0.02 145);
+  --sidebar-ring: oklch(0.42 0.09 155);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/*
+ * Signature motifs for the "ledger & greenbar" direction:
+ * - .greenbar-bg: vintage continuous-feed printout striping, used behind
+ *   data-dense sections (schema tables, sample rows).
+ * - .receipt-tear: a perforated/torn top edge, used on the "View SQL and
+ *   data sample" panel so it reads as a receipt tearing off a roll — the
+ *   product's one signature element (it always "shows its receipts").
+ * - .receipt-unfurl: the single orchestrated motion moment, played when
+ *   that panel opens.
+ * - .printer-loading: a printer-head stripe sweep, replacing generic
+ *   skeleton shimmer while the agent is "printing" an answer.
+ */
+
+.greenbar-bg {
+  /* A quiet rule line every 28px, like ledger-ruled paper — not solid
+     alternating bands, which read as a loud test pattern at full-page scale. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    var(--greenbar-line) 27px,
+    var(--greenbar-line) 28px
+  );
+}
+
+.receipt-tear {
+  position: relative;
+  padding-top: 14px;
+}
+
+.receipt-tear::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 9px;
+  background-image: linear-gradient(135deg, var(--background) 50%, transparent 50%),
+    linear-gradient(45deg, var(--background) 50%, transparent 50%);
+  background-size: 14px 14px;
+  background-position: top left;
+  background-repeat: repeat-x;
+}
+
+@keyframes receipt-unfurl {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scaleY(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+.receipt-unfurl {
+  transform-origin: top;
+  animation: receipt-unfurl 240ms ease-out;
+}
+
+@keyframes printer-sweep {
+  0% {
+    background-position: 0 -150%;
+  }
+  100% {
+    background-position: 0 250%;
+  }
+}
+
+.printer-loading {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--greenbar) 45%,
+    var(--greenbar) 55%,
+    transparent 100%
+  );
+  background-size: 100% 260%;
+  animation: printer-sweep 1.15s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .receipt-unfurl {
+    animation: none;
+  }
+  .printer-loading {
+    animation: none;
+    background-image: none;
+    background-color: var(--greenbar);
+  }
+}

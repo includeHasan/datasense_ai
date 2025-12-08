@@ -1,0 +1,68 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import rateLimit from "@fastify/rate-limit";
+import { getDemoState } from "../demo/seed.js";
+import { buildGraph } from "../agent/graph.js";
+
+const askBodySchema = z.object({
+  question: z.string().min(1, "question is required"),
+});
+
+/**
+ * Registers the public, unauthenticated /demo routes: a fixed, server-seeded
+ * sample dataset anyone can query without an account, so the app can be
+ * tried on a login-free deployment. Scoped to its own rate limit so a
+ * publicly reachable route can't run up the LLM bill.
+ */
+export async function registerDemoRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(async (demoApp) => {
+    await demoApp.register(rateLimit, {
+      max: 10,
+      timeWindow: "1 minute",
+    });
+
+    demoApp.get("/demo/profile", async (_request, reply) => {
+      const { profile } = await getDemoState();
+      return reply.send(profile);
+    });
+
+    demoApp.get("/demo/suggested-questions", async (_request, reply) => {
+      const { suggestedQuestions } = await getDemoState();
+      return reply.send({ questions: suggestedQuestions });
+    });
+
+    demoApp.post("/demo/ask", async (request, reply) => {
+      const parsed = askBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: parsed.error.flatten() });
+      }
+
+      const { source, profile } = await getDemoState();
+
+      try {
+        const graph = buildGraph(source);
+        const result = await graph.invoke({
+          question: parsed.data.question,
+          profile,
+          plan: "",
+          sql: "",
+          queryResult: null,
+          error: null,
+          attempts: 0,
+          narrative: "",
+          chartSpec: null,
+          caveats: [],
+        });
+
+        return reply.send(result.finalAnswer);
+      } catch (error) {
+        return reply.code(500).send({
+          error: "Something went wrong while answering your question. Please try again.",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+  });
+}
+
+export default registerDemoRoutes;
