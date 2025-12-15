@@ -1,4 +1,17 @@
-import type { AuthUser, FinalAnswer, SchemaProfile } from "./types";
+import { askStream } from "./api-stream";
+import type {
+  AgentEvent,
+  AskResponse,
+  AuthUser,
+  Conversation,
+  ConversationDetail,
+  Dashboard,
+  FinalAnswer,
+  GenerateReportRequest,
+  GenerateReportResponse,
+  PinToDashboardRequest,
+  SchemaProfile,
+} from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -187,16 +200,73 @@ export async function getSuggestedQuestions(
 export async function ask(
   token: string,
   sourceId: string,
-  question: string
-): Promise<FinalAnswer> {
+  question: string,
+  conversationId?: string
+): Promise<AskResponse> {
   const response = await fetch(`${getApiBaseUrl()}/sources/${sourceId}/ask`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(token),
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, conversationId }),
   });
+  return handleResponse(response);
+}
+
+// --- Conversation endpoints (authenticated) ---
+
+export async function createConversation(
+  token: string,
+  sourceId?: string,
+  title?: string
+): Promise<Conversation> {
+  const response = await fetch(`${getApiBaseUrl()}/conversations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify({ sourceId, title }),
+  });
+  return handleResponse(response);
+}
+
+export async function listConversations(
+  token: string
+): Promise<Conversation[]> {
+  const response = await fetch(`${getApiBaseUrl()}/conversations`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  return handleResponse(response);
+}
+
+export async function getConversation(
+  token: string,
+  conversationId: string
+): Promise<ConversationDetail> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/conversations/${conversationId}`,
+    {
+      method: "GET",
+      headers: authHeaders(token),
+    }
+  );
+  return handleResponse(response);
+}
+
+export async function deleteConversation(
+  token: string,
+  conversationId: string
+): Promise<void> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/conversations/${conversationId}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(token),
+    }
+  );
   return handleResponse(response);
 }
 
@@ -218,12 +288,83 @@ export async function getDemoSuggestedQuestions(): Promise<{
   return handleResponse(response);
 }
 
-export async function demoAsk(question: string): Promise<FinalAnswer> {
+export async function demoAsk(
+  question: string,
+  priorTurns?: { question: string; answer: FinalAnswer }[]
+): Promise<FinalAnswer> {
   const response = await fetch(`${getApiBaseUrl()}/demo/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, priorTurns }),
   });
+  return handleResponse(response);
+}
+
+// --- Report generation (authenticated) ---
+
+/**
+ * Kicks off report generation and streams its live activity trace, the same
+ * way `askStream` drives `AgentActivityTrace` for a normal question.
+ * Resolves with the full report JSON (`{ title, sections }`) once generation
+ * finishes; the caller then passes that straight into
+ * `buildReportPdf` (see lib/build-pdf.ts) to assemble and download the PDF
+ * entirely in the browser - there is no server-side PDF artifact to fetch.
+ */
+export async function generateReport(
+  token: string,
+  body: GenerateReportRequest,
+  onEvent: (event: AgentEvent) => void
+): Promise<GenerateReportResponse> {
+  return askStream<GenerateReportResponse>(
+    `${getApiBaseUrl()}/reports`,
+    body,
+    { token },
+    onEvent
+  );
+}
+
+// --- Dashboard endpoints (authenticated) ---
+
+/**
+ * Returns the current user's single personal dashboard, which the backend
+ * lazily creates on first request.
+ */
+export async function getDashboard(token: string): Promise<Dashboard> {
+  const response = await fetch(`${getApiBaseUrl()}/dashboards`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  return handleResponse(response);
+}
+
+export async function pinToDashboard(
+  token: string,
+  dashboardId: string,
+  pin: PinToDashboardRequest
+): Promise<Dashboard> {
+  const response = await fetch(`${getApiBaseUrl()}/dashboards/${dashboardId}/pins`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify(pin),
+  });
+  return handleResponse(response);
+}
+
+export async function unpinFromDashboard(
+  token: string,
+  dashboardId: string,
+  pinId: string
+): Promise<Dashboard> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/dashboards/${dashboardId}/pins/${pinId}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(token),
+    }
+  );
   return handleResponse(response);
 }
 

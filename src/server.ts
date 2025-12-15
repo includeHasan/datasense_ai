@@ -4,10 +4,14 @@ import multipart from "@fastify/multipart";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import { config } from "./config.js";
+import { connectMongo } from "./db/mongo.js";
 import { registerSourceRoutes } from "./routes/sources.js";
 import { registerAskRoute } from "./routes/ask.js";
 import { registerAuthRoutes } from "./auth/routes.js";
 import { registerDemoRoutes } from "./routes/demo.js";
+import { registerConversationRoutes } from "./routes/conversations.js";
+import { registerReportRoutes } from "./routes/reports.js";
+import { registerDashboardRoutes } from "./routes/dashboards.js";
 
 const app = Fastify({ logger: true });
 
@@ -32,6 +36,9 @@ await app.register(multipart);
 registerAuthRoutes(app);
 registerSourceRoutes(app);
 registerAskRoute(app);
+registerConversationRoutes(app);
+registerDashboardRoutes(app);
+await registerReportRoutes(app);
 await registerDemoRoutes(app);
 
 app.get("/health", async () => {
@@ -40,6 +47,7 @@ app.get("/health", async () => {
 
 export async function run(): Promise<void> {
   try {
+    await connectMongo();
     await app.listen({ port: config.port, host: "0.0.0.0" });
   } catch (err) {
     app.log.error(err);

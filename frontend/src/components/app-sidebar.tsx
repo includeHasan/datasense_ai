@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { SquarePen, Eye } from "lucide-react";
+import Link from "next/link";
+import { SquarePen, Eye, LayoutDashboard } from "lucide-react";
 
-import type { SchemaProfile } from "@/lib/types";
+import type { Conversation, SchemaProfile } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SchemaSummary } from "@/components/schema-summary";
+import { ReportDialog } from "@/components/report-dialog";
 import { cn } from "@/lib/utils";
 
 function summarizeProfile(profile: SchemaProfile): string {
@@ -32,6 +34,12 @@ interface AppSidebarProps {
   badge?: string;
   tagline?: string;
   footer: React.ReactNode;
+  conversations?: Conversation[];
+  activeConversationId?: string | null;
+  onSelectConversation?: (conversationId: string) => void;
+  /** Enables the "Generate report" action; omit to hide it entirely (e.g. on the login-free demo page). */
+  token?: string;
+  sourceId?: string | null;
 }
 
 /**
@@ -48,6 +56,11 @@ export function AppSidebar({
   badge,
   tagline,
   footer,
+  conversations,
+  activeConversationId,
+  onSelectConversation,
+  token,
+  sourceId,
 }: AppSidebarProps) {
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col gap-4 border-r border-border bg-card p-4">
@@ -96,6 +109,26 @@ export function AppSidebar({
             </DialogContent>
           </Dialog>
         )}
+
+        {token && (
+          <ReportDialog
+            token={token}
+            sourceId={sourceId ?? null}
+            activeConversationId={activeConversationId ?? null}
+          />
+        )}
+
+        {token && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-start gap-2"
+            render={<Link href="/dashboard" />}
+          >
+            <LayoutDashboard />
+            Dashboard
+          </Button>
+        )}
       </nav>
 
       {profile && (
@@ -107,6 +140,31 @@ export function AppSidebar({
         >
           {summarizeProfile(profile)}
         </p>
+      )}
+
+      {conversations && conversations.length > 0 && (
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+          <p className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Recent chats
+          </p>
+          <nav className="flex flex-col gap-0.5">
+            {conversations.map((conversation) => (
+              <button
+                key={conversation.id}
+                type="button"
+                onClick={() => onSelectConversation?.(conversation.id)}
+                className={cn(
+                  "truncate rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+                  activeConversationId === conversation.id &&
+                    "bg-background font-medium text-foreground",
+                )}
+                title={conversation.title}
+              >
+                {conversation.title}
+              </button>
+            ))}
+          </nav>
+        </div>
       )}
 
       <div className="mt-auto flex flex-col gap-2 border-t border-border pt-4">{footer}</div>

@@ -1,26 +1,40 @@
-import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { MongoMemoryServer } from "mongodb-memory-server";
+import mongoose from "mongoose";
+import { randomUUID } from "node:crypto";
 
-// The user store opens its sqlite database at import time using
-// config.usersDbPath, so point it at a throwaway file before anything
-// under test is imported, keeping this suite isolated from real data.
-process.env.USERS_DB_PATH = join(tmpdir(), `datasense-auth-test-${randomUUID()}.db`);
+// The user store persists via Mongoose, so spin up an in-memory MongoDB
+// instance and point config.mongoDbUri at it before anything under test
+// is imported, keeping this suite isolated from any real database.
+let mongoServer: MongoMemoryServer;
+
+// Pin an older, much smaller binary than the current default so the
+// first-run download (this sandbox has no local mongod to reuse) completes
+// in a reasonable amount of time; any 4.x+ server works fine with Mongoose.
+process.env.MONGOMS_VERSION ??= "4.4.29";
 process.env.JWT_SECRET = "test-secret";
 
 let app: FastifyInstance;
 
 beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  process.env.MONGODB_URI = mongoServer.getUri();
+
   const mod = await import("../src/server.js");
   app = mod.default;
+
+  const { connectMongo } = await import("../src/db/mongo.js");
+  await connectMongo();
+
   await app.ready();
-});
+}, 600_000);
 
 afterAll(async () => {
-  await app.close();
-});
+  await app?.close();
+  await mongoose.disconnect();
+  await mongoServer?.stop();
+}, 60_000);
 
 function uniqueEmail(): string {
   return `${randomUUID()}@example.com`;

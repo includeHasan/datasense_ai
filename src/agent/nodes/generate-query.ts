@@ -17,6 +17,7 @@ export async function generateQuery(state: AgentStateType): Promise<AgentStateUp
     state.plan,
     state.profile,
     "sql",
+    state.history,
   );
   const result = await model.invoke(prompt);
   return { sql: result.sql };

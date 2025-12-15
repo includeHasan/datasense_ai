@@ -3,7 +3,10 @@ import type { NextRequest } from "next/server";
 
 const TOKEN_COOKIE = "ds_token";
 const PUBLIC_PATHS = new Set(["/login", "/register"]);
-const ALWAYS_PUBLIC_PATHS = new Set(["/demo"]);
+// "/" renders a marketing landing page for signed-out visitors and the app
+// itself for signed-in users — the client decides which, so it must always
+// be reachable rather than force-redirected to /login.
+const ALWAYS_PUBLIC_PATHS = new Set(["/demo", "/"]);
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

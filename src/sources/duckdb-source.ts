@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
 import * as XLSX from "xlsx";
 import { config } from "../config.js";
+import { inferRelationships } from "./relationships.js";
 import type { DataSource, QueryResult, SchemaProfile } from "./types.js";
 
 export type DeclaredFileType = "csv" | "json" | "xlsx" | "xls";
@@ -54,6 +55,42 @@ export class DuckDBSource implements DataSource {
         declaredType === "xlsx" || declaredType === "xls"
           ? await DuckDBSource.loadExcel(connection, buffer, tmpDir)
           : await DuckDBSource.loadCsvOrJson(connection, buffer, originalFilename, declaredType, tmpDir);
+
+      return new DuckDBSource(instance, connection, tableNames);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Factory that loads several independent files as separate tables in the
+   * same in-memory DuckDB instance (e.g. a set of related CSVs such as
+   * customers/orders/products for the demo dataset). Each file is loaded
+   * the same way as a single-file upload; table names are derived from each
+   * file's name.
+   */
+  static async createFromFiles(
+    files: Array<{ buffer: Buffer; originalFilename: string; declaredType: DeclaredFileType }>,
+  ): Promise<DuckDBSource> {
+    const instance = await DuckDBInstance.create(":memory:");
+    const connection = await DuckDBConnection.create(instance);
+
+    const tmpDir = await mkdtemp(join(tmpdir(), "datasense-"));
+    try {
+      const tableNames: string[] = [];
+      for (const file of files) {
+        const loaded =
+          file.declaredType === "xlsx" || file.declaredType === "xls"
+            ? await DuckDBSource.loadExcel(connection, file.buffer, tmpDir)
+            : await DuckDBSource.loadCsvOrJson(
+                connection,
+                file.buffer,
+                file.originalFilename,
+                file.declaredType,
+                tmpDir,
+              );
+        tableNames.push(...loaded);
+      }
 
       return new DuckDBSource(instance, connection, tableNames);
     } finally {
@@ -175,7 +212,12 @@ export class DuckDBSource implements DataSource {
       });
     }
 
-    return { tables };
+    // DuckDB tables created from an uploaded flat file (CSV/JSON/XLSX) have
+    // no declared FK constraints at all - there is no catalog to query - so
+    // relationships here always come from the naming-based heuristic.
+    const relationships = inferRelationships(tables);
+
+    return { tables, relationships };
   }
 
   async execute(query: string): Promise<QueryResult> {

@@ -8,7 +8,7 @@ import type { AgentStateType, AgentStateUpdate } from "../state.js";
  */
 export async function plan(state: AgentStateType): Promise<AgentStateUpdate> {
   const model = getChatModel();
-  const prompt = prompts.buildPlanPrompt(state.question, state.profile);
+  const prompt = prompts.buildPlanPrompt(state.question, state.profile, state.history);
   const result = await model.invoke(prompt);
   const text = typeof result.content === "string" ? result.content : String(result.content);
   return { plan: text };

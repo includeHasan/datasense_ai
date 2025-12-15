@@ -26,14 +26,17 @@ const AuthContext = React.createContext<AuthContextValue | undefined>(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [token, setToken] = React.useState<string | null>(null);
-  const [isLoading, setIsLoading] = React.useState(
-    () => Cookies.get(TOKEN_COOKIE) !== undefined
-  );
+  // Starts true unconditionally (rather than reading the cookie in the
+  // initializer) so the first client render matches the server-rendered
+  // HTML exactly — js-cookie can only see document.cookie on the client,
+  // so branching on it here would produce a hydration mismatch.
+  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     const cookieToken = Cookies.get(TOKEN_COOKIE);
 
     if (!cookieToken) {
+      Promise.resolve().then(() => setIsLoading(false));
       return;
     }
 

@@ -3,9 +3,22 @@ import { z } from "zod";
 import rateLimit from "@fastify/rate-limit";
 import { getDemoState } from "../demo/seed.js";
 import { buildGraph } from "../agent/graph.js";
+import { buildHistory, type HistoryMessage } from "../agent/history.js";
+import { runAgentStreaming } from "../agent/run.js";
+import { startSse } from "../agent/sse.js";
+import { FinalAnswerSchema } from "../schemas/answer.js";
+
+const HISTORY_MAX_TURNS = 5;
 
 const askBodySchema = z.object({
   question: z.string().min(1, "question is required"),
+  // The demo route is anonymous (no database), so unlike /sources/:id/ask
+  // there is no server-persisted conversation to load history from. The
+  // client instead sends its own recent turns (already held in
+  // localStorage/component state) so follow-ups still resolve correctly.
+  priorTurns: z
+    .array(z.object({ question: z.string(), answer: FinalAnswerSchema }))
+    .optional(),
 });
 
 /**
@@ -39,27 +52,48 @@ export async function registerDemoRoutes(app: FastifyInstance): Promise<void> {
 
       const { source, profile } = await getDemoState();
 
+      const historyMessages: HistoryMessage[] = (parsed.data.priorTurns ?? []).flatMap((turn) => [
+        { role: "user" as const, question: turn.question },
+        { role: "assistant" as const, answer: turn.answer },
+      ]);
+      const history = buildHistory(historyMessages, HISTORY_MAX_TURNS);
+
+      reply.hijack();
+      const sse = startSse(reply);
+
       try {
         const graph = buildGraph(source);
-        const result = await graph.invoke({
-          question: parsed.data.question,
-          profile,
-          plan: "",
-          sql: "",
-          queryResult: null,
-          error: null,
-          attempts: 0,
-          narrative: "",
-          chartSpec: null,
-          caveats: [],
-        });
+        const finalAnswer = await runAgentStreaming(
+          graph,
+          {
+            question: parsed.data.question,
+            profile,
+            history,
+            route: "",
+            plan: "",
+            sql: "",
+            queryResult: null,
+            error: null,
+            attempts: 0,
+            narrative: "",
+            chartSpec: null,
+            caveats: [],
+            suggestedFollowups: [],
+          },
+          (event) => sse.send(event),
+        );
 
-        return reply.send(result.finalAnswer);
+        sse.send(finalAnswer, "final");
       } catch (error) {
-        return reply.code(500).send({
-          error: "Something went wrong while answering your question. Please try again.",
-          detail: error instanceof Error ? error.message : String(error),
-        });
+        sse.send(
+          {
+            error: "Something went wrong while answering your question. Please try again.",
+            detail: error instanceof Error ? error.message : String(error),
+          },
+          "error",
+        );
+      } finally {
+        sse.end();
       }
     });
   });

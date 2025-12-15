@@ -9,14 +9,19 @@ const MAX_SAMPLE_ROWS = config.maxSampleRows;
  * the accumulated graph state.
  */
 export function assemble(state: AgentStateType): AgentStateUpdate {
-  const sampleRows = (state.queryResult?.rows ?? []).slice(0, MAX_SAMPLE_ROWS);
+  const isConversational = state.route === "conversational";
+  const sampleRows = isConversational
+    ? []
+    : (state.queryResult?.rows ?? []).slice(0, MAX_SAMPLE_ROWS);
 
   const finalAnswer: FinalAnswer = {
     narrative: state.narrative,
     chartSpec: state.chartSpec as FinalAnswer["chartSpec"],
-    sql: state.sql,
+    sql: isConversational ? "" : state.sql,
     sampleRows,
     caveats: state.caveats,
+    answerType: isConversational || !state.chartSpec ? "conversation" : "analysis",
+    suggestedFollowups: state.suggestedFollowups,
   };
 
   return { finalAnswer };

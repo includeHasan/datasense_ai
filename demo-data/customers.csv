@@ -1,0 +1,21 @@
+customer_id,name,region,signup_date
+1,Alice Nguyen,North,2024-01-14
+2,Bharat Singh,West,2024-01-22
+3,Carla Diaz,South,2024-02-03
+4,Derek Osei,East,2024-02-10
+5,Elena Petrova,North,2024-02-19
+6,Farid Haidari,West,2024-03-01
+7,Grace Kim,South,2024-03-09
+8,Hiro Tanaka,East,2024-03-15
+9,Ines Moreau,North,2024-03-22
+10,Jamal Carter,West,2024-04-02
+11,Kavya Reddy,South,2024-04-11
+12,Liam O'Connor,East,2024-04-20
+13,Maya Cohen,North,2024-05-01
+14,Noah Fischer,West,2024-05-09
+15,Olivia Santos,South,2024-05-17
+16,Pavel Novak,East,2024-05-25
+17,Quinn Walsh,North,2024-06-02
+18,Rina Yamamoto,West,2024-06-10
+19,Sofia Rossi,South,2024-06-18
+20,Tariq Aziz,East,2024-06-27

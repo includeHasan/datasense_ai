@@ -219,6 +219,21 @@
   animation: printer-sweep 1.15s linear infinite;
 }
 
+@keyframes trace-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.trace-step-in {
+  animation: trace-step-in 200ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .receipt-unfurl {
     animation: none;
@@ -227,5 +242,8 @@
     animation: none;
     background-image: none;
     background-color: var(--greenbar);
+  }
+  .trace-step-in {
+    animation: none;
   }
 }

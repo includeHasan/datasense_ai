@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { getChatModel } from "../llm.js";
 import * as prompts from "../prompts.js";
-import { ChartSpecSchema, seriesSchema, cellValueSchema, type ChartSpec } from "../../schemas/chart-spec.js";
+import {
+  ChartSpecSchema,
+  seriesSchema,
+  cellValueSchema,
+  orientationSchema,
+  type ChartSpec,
+} from "../../schemas/chart-spec.js";
 import type { AgentStateType, AgentStateUpdate } from "../state.js";
 import type { QueryResult } from "../../sources/types.js";
 
@@ -20,6 +26,8 @@ const llmBarSchema = llmBaseSchema.extend({
   xKey: z.string(),
   series: z.array(seriesSchema),
   data: z.array(llmRowSchema),
+  stacked: z.boolean().nullable(),
+  orientation: orientationSchema.nullable(),
 });
 
 const llmLineSchema = llmBaseSchema.extend({
@@ -27,6 +35,17 @@ const llmLineSchema = llmBaseSchema.extend({
   xKey: z.string(),
   series: z.array(seriesSchema),
   data: z.array(llmRowSchema),
+  stacked: z.boolean().nullable(),
+  orientation: orientationSchema.nullable(),
+});
+
+const llmAreaSchema = llmBaseSchema.extend({
+  kind: z.literal("area"),
+  xKey: z.string(),
+  series: z.array(seriesSchema),
+  data: z.array(llmRowSchema),
+  stacked: z.boolean().nullable(),
+  orientation: orientationSchema.nullable(),
 });
 
 const llmPieSchema = llmBaseSchema.extend({
@@ -34,6 +53,7 @@ const llmPieSchema = llmBaseSchema.extend({
   categoryKey: z.string(),
   valueKey: z.string(),
   data: z.array(llmRowSchema),
+  donut: z.boolean().nullable(),
 });
 
 const llmTableSchema = llmBaseSchema.extend({
@@ -49,12 +69,64 @@ const llmKpiSchema = llmBaseSchema.extend({
   delta: z.number().nullable(),
 });
 
+const llmScatterSchema = llmBaseSchema.extend({
+  kind: z.literal("scatter"),
+  xKey: z.string(),
+  yKey: z.string(),
+  seriesKey: z.string().nullable(),
+  data: z.array(llmRowSchema),
+});
+
+const llmComboSchema = llmBaseSchema.extend({
+  kind: z.literal("combo"),
+  xKey: z.string(),
+  barSeries: z.array(seriesSchema),
+  lineSeries: z.array(seriesSchema),
+  data: z.array(llmRowSchema),
+});
+
+const llmFunnelSchema = llmBaseSchema.extend({
+  kind: z.literal("funnel"),
+  stageKey: z.string(),
+  valueKey: z.string(),
+  data: z.array(llmRowSchema),
+});
+
+const llmRadarIndicatorSchema = z.object({
+  name: z.string(),
+  max: z.number(),
+});
+
+const llmRadarSeriesSchema = z.object({
+  name: z.string(),
+  values: z.array(z.number()),
+});
+
+const llmRadarSchema = llmBaseSchema.extend({
+  kind: z.literal("radar"),
+  indicators: z.array(llmRadarIndicatorSchema),
+  series: z.array(llmRadarSeriesSchema),
+});
+
+const llmGaugeSchema = llmBaseSchema.extend({
+  kind: z.literal("gauge"),
+  label: z.string(),
+  value: z.number(),
+  max: z.number(),
+});
+
 const llmChartSpecSchema = z.discriminatedUnion("kind", [
   llmBarSchema,
   llmLineSchema,
+  llmAreaSchema,
   llmPieSchema,
   llmTableSchema,
   llmKpiSchema,
+  llmScatterSchema,
+  llmComboSchema,
+  llmFunnelSchema,
+  llmRadarSchema,
+  llmGaugeSchema,
 ]);
 
 type LlmChartSpec = z.infer<typeof llmChartSpecSchema>;
@@ -71,12 +143,23 @@ function toPublicChartSpec(spec: LlmChartSpec): ChartSpec {
   switch (spec.kind) {
     case "bar":
     case "line":
+    case "area":
       return { ...spec, data: rowsToRecords(spec.data) };
     case "pie":
       return { ...spec, data: rowsToRecords(spec.data) };
     case "table":
       return { ...spec, rows: rowsToRecords(spec.rows) };
     case "kpi":
+      return spec;
+    case "scatter":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "combo":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "funnel":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "radar":
+      return spec;
+    case "gauge":
       return spec;
   }
 }
@@ -99,6 +182,7 @@ export async function synthesize(state: AgentStateType): Promise<AgentStateUpdat
     state.question,
     state.sql,
     state.queryResult ?? emptyQueryResult,
+    state.history,
   );
   const result = await model.invoke(prompt);
   const chartSpec = ChartSpecSchema.parse(toPublicChartSpec(result.chartSpec));

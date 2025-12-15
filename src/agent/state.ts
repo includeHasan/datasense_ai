@@ -18,10 +18,22 @@ import type { FinalAnswer } from "../schemas/answer.js";
  * - chartSpec: ChartSpec | null (default null)
  * - caveats: string[] (default [])
  * - finalAnswer: FinalAnswer | null (default null)
+ * - route: "data_question" | "conversational" | "" (default "")
+ * - suggestedFollowups: string[] (default [])
+ * - history: string (default "") - compact rendering of recent prior turns
+ *   in the conversation, used to resolve follow-up references
  */
 export const AgentState = Annotation.Root({
   question: Annotation<string>,
   profile: Annotation<SchemaProfile>,
+  history: Annotation<string>({
+    reducer: (_current, update) => update,
+    default: () => "",
+  }),
+  route: Annotation<"data_question" | "conversational" | "">({
+    reducer: (_current, update) => update,
+    default: () => "",
+  }),
   plan: Annotation<string>({
     reducer: (_current, update) => update,
     default: () => "",
@@ -57,6 +69,10 @@ export const AgentState = Annotation.Root({
   finalAnswer: Annotation<FinalAnswer | null>({
     reducer: (_current, update) => update,
     default: () => null,
+  }),
+  suggestedFollowups: Annotation<string[]>({
+    reducer: (_current, update) => update,
+    default: () => [],
   }),
 });
 

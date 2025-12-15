@@ -6,7 +6,13 @@ import { suggestQuestions } from "../agent/suggest-questions.js";
 import type { SchemaProfile } from "../sources/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEMO_CSV_PATH = path.resolve(__dirname, "..", "..", "demo-data", "sample-sales.csv");
+const DEMO_DATA_DIR = path.resolve(__dirname, "..", "..", "demo-data");
+
+// Related tables (customers -> orders -> order_items -> products) so the
+// demo actually exercises schema-grounded relationship detection: since
+// these are plain CSVs with no declared constraints, DuckDBSource picks them
+// up via the naming-based heuristic (see src/sources/relationships.ts).
+const DEMO_CSV_FILENAMES = ["customers.csv", "products.csv", "orders.csv", "order_items.csv"];
 
 export interface DemoState {
   source: DuckDBSource;
@@ -17,8 +23,14 @@ export interface DemoState {
 let statePromise: Promise<DemoState> | null = null;
 
 async function loadDemoState(): Promise<DemoState> {
-  const buffer = await readFile(DEMO_CSV_PATH);
-  const source = await DuckDBSource.create(buffer, "sample-sales.csv", "csv");
+  const files = await Promise.all(
+    DEMO_CSV_FILENAMES.map(async (filename) => ({
+      buffer: await readFile(path.join(DEMO_DATA_DIR, filename)),
+      originalFilename: filename,
+      declaredType: "csv" as const,
+    })),
+  );
+  const source = await DuckDBSource.createFromFiles(files);
   const profile = await source.profile();
   // Suggested questions are a nice-to-have; if generation fails, still serve the demo.
   const suggestedQuestions = await suggestQuestions(profile).catch(() => []);

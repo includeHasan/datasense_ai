@@ -25,7 +25,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
     try {
       const passwordHash = await bcrypt.hash(password, PASSWORD_SALT_ROUNDS);
-      const user = createUser({ email, passwordHash });
+      const user = await createUser({ email, passwordHash });
       const token = app.jwt.sign({ id: user.id, email: user.email });
       return reply.send({ token, user: { id: user.id, email: user.email } });
     } catch (error) {
@@ -46,12 +46,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
     const { email, password } = parsed.data;
 
-    const user = findByEmail(email);
+    const user = await findByEmail(email);
     if (!user) {
       return reply.code(401).send({ error: "Invalid email or password." });
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.password_hash);
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) {
       return reply.code(401).send({ error: "Invalid email or password." });
     }

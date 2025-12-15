@@ -4,7 +4,8 @@ import Database from "better-sqlite3";
 
 import { config } from "../config.js";
 import { assertReadOnlySelect } from "../safety/sql-guard.js";
-import type { DataSource, QueryResult, SchemaProfile } from "./types.js";
+import { inferRelationships } from "./relationships.js";
+import type { DataSource, QueryResult, SchemaProfile, SchemaRelationship } from "./types.js";
 
 export type SqlSourceKind = "postgres" | "mysql" | "sqlite";
 
@@ -43,6 +44,123 @@ interface TableColumnInfo {
   name: string;
   type: string;
   nullable: boolean;
+}
+
+/**
+ * Queries Postgres's information_schema for declared foreign-key constraints
+ * (table_constraints joined against key_column_usage/constraint_column_usage
+ * via the shared constraint_name), producing "declared" relationships
+ * grounded in real schema metadata rather than column-name guessing.
+ */
+export async function declaredForeignKeysPostgres(pool: pg.Pool): Promise<SchemaRelationship[]> {
+  const result = await pool.query<{
+    from_table: string;
+    from_column: string;
+    to_table: string;
+    to_column: string;
+  }>(
+    `SELECT
+        kcu.table_name AS from_table,
+        kcu.column_name AS from_column,
+        ccu.table_name AS to_table,
+        ccu.column_name AS to_column
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+       JOIN information_schema.constraint_column_usage ccu
+         ON tc.constraint_name = ccu.constraint_name
+        AND tc.table_schema = ccu.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public'`,
+  );
+
+  return result.rows.map((row) => ({
+    fromTable: row.from_table,
+    fromColumn: row.from_column,
+    toTable: row.to_table,
+    toColumn: row.to_column,
+    confidence: "declared" as const,
+  }));
+}
+
+/**
+ * Queries MySQL's information_schema.KEY_COLUMN_USAGE for declared foreign
+ * keys (rows where REFERENCED_TABLE_NAME is populated already scope the
+ * result to FK columns), producing "declared" relationships.
+ */
+export async function declaredForeignKeysMysql(pool: mysql.Pool): Promise<SchemaRelationship[]> {
+  const [rows] = await pool.query<mysql.RowDataPacket[]>(
+    `SELECT
+        table_name AS from_table,
+        column_name AS from_column,
+        referenced_table_name AS to_table,
+        referenced_column_name AS to_column
+       FROM information_schema.KEY_COLUMN_USAGE
+      WHERE table_schema = DATABASE()
+        AND referenced_table_name IS NOT NULL`,
+  );
+
+  return rows.map((row) => ({
+    fromTable: String(row.from_table ?? row.FROM_TABLE ?? row.TABLE_NAME),
+    fromColumn: String(row.from_column ?? row.FROM_COLUMN ?? row.COLUMN_NAME),
+    toTable: String(row.to_table ?? row.TO_TABLE ?? row.REFERENCED_TABLE_NAME),
+    toColumn: String(row.to_column ?? row.TO_COLUMN ?? row.REFERENCED_COLUMN_NAME),
+    confidence: "declared" as const,
+  }));
+}
+
+/**
+ * Uses SQLite's PRAGMA foreign_key_list('<table>') per table, which returns
+ * the referenced table/column directly (no join needed), producing
+ * "declared" relationships. When a FK omits an explicit "to" column (SQLite
+ * allows referencing the parent's implicit rowid/primary key), it is skipped
+ * rather than guessed — the heuristic fallback will pick it up if possible.
+ */
+export function declaredForeignKeysSqlite(db: Database.Database, tableNames: string[]): SchemaRelationship[] {
+  const relationships: SchemaRelationship[] = [];
+
+  for (const tableName of tableNames) {
+    const fkRows = db
+      .prepare<[], { table: string; from: string; to: string | null }>(
+        `PRAGMA foreign_key_list("${tableName}")`,
+      )
+      .all();
+
+    for (const fk of fkRows) {
+      if (!fk.to) continue;
+      relationships.push({
+        fromTable: tableName,
+        fromColumn: fk.from,
+        toTable: fk.table,
+        toColumn: fk.to,
+        confidence: "declared",
+      });
+    }
+  }
+
+  return relationships;
+}
+
+/**
+ * Merges declared relationships with heuristically inferred ones as a
+ * fallback: any table that has no declared outgoing FK still gets a chance
+ * at heuristic detection, covering connectors where the declared-FK query
+ * returned nothing (e.g. a schema genuinely has no FK constraints).
+ */
+export function withHeuristicFallback(
+  tables: SchemaProfile["tables"],
+  declared: SchemaRelationship[],
+): SchemaRelationship[] {
+  const tablesWithDeclaredFk = new Set(declared.map((rel) => rel.fromTable));
+  const tablesNeedingHeuristics = tables.filter((table) => !tablesWithDeclaredFk.has(table.name));
+  const inferred = tablesNeedingHeuristics.length > 0 ? inferRelationships(tables) : [];
+
+  // Only keep inferred relationships that originate from tables lacking
+  // declared FKs, so we never contradict/duplicate real constraint metadata.
+  const filteredInferred = inferred.filter((rel) => !tablesWithDeclaredFk.has(rel.fromTable));
+
+  return [...declared, ...filteredInferred];
 }
 
 async function profilePostgres(pool: pg.Pool): Promise<SchemaProfile> {
@@ -93,7 +211,10 @@ async function profilePostgres(pool: pg.Pool): Promise<SchemaProfile> {
     });
   }
 
-  return { tables };
+  const declared = await declaredForeignKeysPostgres(pool).catch(() => [] as SchemaRelationship[]);
+  const relationships = withHeuristicFallback(tables, declared);
+
+  return { tables, relationships };
 }
 
 async function profileMysql(pool: mysql.Pool): Promise<SchemaProfile> {
@@ -142,10 +263,13 @@ async function profileMysql(pool: mysql.Pool): Promise<SchemaProfile> {
     });
   }
 
-  return { tables };
+  const declared = await declaredForeignKeysMysql(pool).catch(() => [] as SchemaRelationship[]);
+  const relationships = withHeuristicFallback(tables, declared);
+
+  return { tables, relationships };
 }
 
-function profileSqlite(db: Database.Database): SchemaProfile {
+export function profileSqlite(db: Database.Database): SchemaProfile {
   const tableRows = db
     .prepare<[], { name: string }>(
       `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
@@ -184,7 +308,11 @@ function profileSqlite(db: Database.Database): SchemaProfile {
     });
   }
 
-  return { tables };
+  const tableNames = tables.map((table) => table.name);
+  const declared = declaredForeignKeysSqlite(db, tableNames);
+  const relationships = withHeuristicFallback(tables, declared);
+
+  return { tables, relationships };
 }
 
 async function executePostgres(pool: pg.Pool, query: string): Promise<QueryResult> {

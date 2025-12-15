@@ -17,7 +17,7 @@ const envSchema = z.object({
   MAX_SAMPLE_ROWS: numericString(20),
   JWT_SECRET: z.string().optional().default("dev-insecure-secret-change-me"),
   FRONTEND_ORIGIN: z.string().optional().default("http://localhost:3000"),
-  USERS_DB_PATH: z.string().optional().default("data/users.db"),
+  MONGODB_URI: z.string().optional().default("mongodb://localhost:27017/datasense"),
 });
 
 const parsedEnv = envSchema.parse(process.env);
@@ -31,7 +31,7 @@ export const config = {
   maxSampleRows: parsedEnv.MAX_SAMPLE_ROWS,
   jwtSecret: parsedEnv.JWT_SECRET,
   frontendOrigin: parsedEnv.FRONTEND_ORIGIN,
-  usersDbPath: parsedEnv.USERS_DB_PATH,
+  mongoDbUri: parsedEnv.MONGODB_URI,
 };
 
 export type Config = typeof config;
