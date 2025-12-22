@@ -2,9 +2,16 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import rateLimit from "@fastify/rate-limit";
 import { Conversation } from "../models/conversation.js";
+import { Report } from "../models/report.js";
+import { User } from "../models/user.js";
+import { checkQuota, consumeQuota, resolveLlm } from "../auth/llm-access.js";
 import { getProfileForOwner, getSourceForOwner } from "../sources/registry.js";
 import { startSse } from "../agent/sse.js";
-import { buildGeneratedReport, buildReportFromConversation } from "../reports/builder.js";
+import {
+  buildGeneratedReport,
+  buildReportFromConversation,
+  type GeneratedReport,
+} from "../reports/builder.js";
 
 const reportBodySchema = z
   .object({
@@ -20,6 +27,40 @@ const reportBodySchema = z
   .refine((data) => Boolean(data.conversationId) !== Boolean(data.sourceId), {
     message: 'Provide exactly one of "conversationId" (export a conversation) or "sourceId" (generate a fresh report).',
   });
+
+/**
+ * Persists a freshly-built report for its owner so it survives page
+ * refreshes and shows up in the user's report history (GET /reports). Returns
+ * the new document's string id, which the route echoes back in the terminal
+ * `final` SSE payload so the client knows the report was saved.
+ */
+async function persistReport(
+  report: GeneratedReport,
+  ownerId: string,
+  origin: { sourceId?: string; conversationId?: string },
+): Promise<string> {
+  const doc = await Report.create({
+    ownerId,
+    title: report.title,
+    sections: report.sections,
+    sourceId: origin.sourceId,
+    conversationId: origin.conversationId,
+  });
+  return String(doc._id);
+}
+
+/**
+ * Looks up a report by id, but only if it is owned by the given userId.
+ * Returns null both when the report does not exist and when it belongs to a
+ * different owner, so callers can respond with a uniform 404 instead of
+ * leaking existence of other users' reports (mirrors getConversationForOwner
+ * in conversations.ts).
+ */
+async function getReportForOwner(reportId: string, ownerId: string) {
+  const report = await Report.findById(reportId).catch(() => null);
+  if (!report || report.ownerId !== ownerId) return null;
+  return report;
+}
 
 /**
  * Registers the /reports route:
@@ -75,7 +116,8 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
             return;
           }
           sse.send({ phase: "load", label: "Loading conversation", status: "done" });
-          sse.send(result, "final");
+          const reportId = await persistReport(result, request.user.id, { conversationId });
+          sse.send({ ...result, reportId }, "final");
         } catch (error) {
           sse.send(
             {
@@ -91,19 +133,47 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       }
 
       // sourceId mode: generate a fresh report from a connected data source.
-      const source = getSourceForOwner(sourceId as string, request.user.id);
-      const profile = getProfileForOwner(sourceId as string, request.user.id);
+      // This runs one or more LLM agent passes, so it counts against the
+      // freemium quota (unlike the no-LLM conversation-export mode above).
+      const source = await getSourceForOwner(sourceId as string, request.user.id);
+      const profile = await getProfileForOwner(sourceId as string, request.user.id);
       if (!source || !profile) {
         return reply.code(404).send({ error: `No source found with id "${sourceId}".` });
+      }
+
+      const user = await User.findById(request.user.id);
+      if (!user) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      const { overrides, usesOwnKey } = resolveLlm(user);
+      if (!usesOwnKey) {
+        const quota = checkQuota(user);
+        if (!quota.allowed) {
+          return reply.code(402).send({
+            error:
+              "You've used your 5 free queries this month. Add your own API key in Settings to continue.",
+            code: "QUOTA_EXCEEDED",
+          });
+        }
       }
 
       reply.hijack();
       const sse = startSse(reply);
       try {
-        const result = await buildGeneratedReport(source, profile, preferences ?? {}, (event) =>
-          sse.send(event),
+        const result = await buildGeneratedReport(
+          source,
+          profile,
+          preferences ?? {},
+          (event) => sse.send(event),
+          overrides,
         );
-        sse.send(result, "final");
+        const reportId = await persistReport(result, request.user.id, {
+          sourceId: sourceId as string,
+        });
+        if (!usesOwnKey) {
+          await consumeQuota(user);
+        }
+        sse.send({ ...result, reportId }, "final");
       } catch (error) {
         sse.send(
           {
@@ -117,6 +187,44 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       }
     });
   });
+
+  // The list/get routes are cheap JSON reads, so register them directly on
+  // `app` (outside the encapsulated scope above) rather than behind the
+  // strict 3-per-5-minute generation rate limit that guards POST /reports.
+  app.get("/reports", { preHandler: [app.authenticate] }, async (request, reply) => {
+    const reports = await Report.find({ ownerId: request.user.id })
+      .sort({ createdAt: -1 })
+      .select({ title: 1, createdAt: 1 })
+      .lean();
+
+    return reply.send(
+      reports.map((report) => ({
+        id: String(report._id),
+        title: report.title,
+        createdAt: report.createdAt,
+      })),
+    );
+  });
+
+  app.get<{ Params: { id: string } }>(
+    "/reports/:id",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const report = await getReportForOwner(request.params.id, request.user.id);
+      if (!report) {
+        return reply.code(404).send({ error: `No report found with id "${request.params.id}".` });
+      }
+
+      return reply.send({
+        id: String(report._id),
+        title: report.title,
+        sections: report.sections,
+        sourceId: report.sourceId,
+        conversationId: report.conversationId,
+        createdAt: report.createdAt,
+      });
+    },
+  );
 }
 
 export default registerReportRoutes;

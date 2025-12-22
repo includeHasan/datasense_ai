@@ -15,7 +15,7 @@ const routerOutputSchema = z.object({
  * answered directly without querying the data.
  */
 export async function router(state: AgentStateType): Promise<AgentStateUpdate> {
-  const model = getChatModel().withStructuredOutput(routerOutputSchema);
+  const model = getChatModel(state.llm).withStructuredOutput(routerOutputSchema);
   const prompt = prompts.buildRouterPrompt(state.question, state.profile, state.history);
   const result = await model.invoke(prompt);
   return { route: result.route };

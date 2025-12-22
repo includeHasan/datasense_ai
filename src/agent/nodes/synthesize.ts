@@ -28,6 +28,7 @@ const llmBarSchema = llmBaseSchema.extend({
   data: z.array(llmRowSchema),
   stacked: z.boolean().nullable(),
   orientation: orientationSchema.nullable(),
+  normalized: z.boolean().nullable(),
 });
 
 const llmLineSchema = llmBaseSchema.extend({
@@ -37,6 +38,7 @@ const llmLineSchema = llmBaseSchema.extend({
   data: z.array(llmRowSchema),
   stacked: z.boolean().nullable(),
   orientation: orientationSchema.nullable(),
+  normalized: z.boolean().nullable(),
 });
 
 const llmAreaSchema = llmBaseSchema.extend({
@@ -46,6 +48,7 @@ const llmAreaSchema = llmBaseSchema.extend({
   data: z.array(llmRowSchema),
   stacked: z.boolean().nullable(),
   orientation: orientationSchema.nullable(),
+  normalized: z.boolean().nullable(),
 });
 
 const llmPieSchema = llmBaseSchema.extend({
@@ -67,6 +70,8 @@ const llmKpiSchema = llmBaseSchema.extend({
   label: z.string(),
   value: z.union([z.number(), z.string()]),
   delta: z.number().nullable(),
+  target: z.number().nullable(),
+  trend: z.array(z.number()).nullable(),
 });
 
 const llmScatterSchema = llmBaseSchema.extend({
@@ -74,6 +79,7 @@ const llmScatterSchema = llmBaseSchema.extend({
   xKey: z.string(),
   yKey: z.string(),
   seriesKey: z.string().nullable(),
+  sizeKey: z.string().nullable(),
   data: z.array(llmRowSchema),
 });
 
@@ -115,6 +121,71 @@ const llmGaugeSchema = llmBaseSchema.extend({
   max: z.number(),
 });
 
+const llmHeatmapSchema = llmBaseSchema.extend({
+  kind: z.literal("heatmap"),
+  xKey: z.string(),
+  yKey: z.string(),
+  valueKey: z.string(),
+  data: z.array(llmRowSchema),
+});
+
+const llmBoxplotSchema = llmBaseSchema.extend({
+  kind: z.literal("boxplot"),
+  categoryKey: z.string(),
+  minKey: z.string(),
+  q1Key: z.string(),
+  medianKey: z.string(),
+  q3Key: z.string(),
+  maxKey: z.string(),
+  data: z.array(llmRowSchema),
+});
+
+const llmHistogramSchema = llmBaseSchema.extend({
+  kind: z.literal("histogram"),
+  binKey: z.string(),
+  countKey: z.string(),
+  data: z.array(llmRowSchema),
+});
+
+const llmWaterfallSchema = llmBaseSchema.extend({
+  kind: z.literal("waterfall"),
+  categoryKey: z.string(),
+  valueKey: z.string(),
+  totalKey: z.string().nullable(),
+  data: z.array(llmRowSchema),
+});
+
+// path/value are already concretely-typed (no arbitrary-keyed record), so
+// these four kinds pass straight through structured output with no
+// {key,value}-cell transformation needed, unlike the row-shaped kinds above.
+const llmHierarchyNodeSchema = z.object({
+  path: z.array(z.string()),
+  value: z.number(),
+});
+
+const llmTreemapSchema = llmBaseSchema.extend({
+  kind: z.literal("treemap"),
+  data: z.array(llmHierarchyNodeSchema),
+});
+
+const llmSunburstSchema = llmBaseSchema.extend({
+  kind: z.literal("sunburst"),
+  data: z.array(llmHierarchyNodeSchema),
+});
+
+const llmSankeySchema = llmBaseSchema.extend({
+  kind: z.literal("sankey"),
+  nodes: z.array(z.object({ name: z.string() })),
+  links: z.array(
+    z.object({ source: z.string(), target: z.string(), value: z.number() }),
+  ),
+});
+
+const llmCalendarSchema = llmBaseSchema.extend({
+  kind: z.literal("calendar"),
+  data: z.array(z.object({ date: z.string(), value: z.number() })),
+});
+
 const llmChartSpecSchema = z.discriminatedUnion("kind", [
   llmBarSchema,
   llmLineSchema,
@@ -127,6 +198,14 @@ const llmChartSpecSchema = z.discriminatedUnion("kind", [
   llmFunnelSchema,
   llmRadarSchema,
   llmGaugeSchema,
+  llmHeatmapSchema,
+  llmBoxplotSchema,
+  llmHistogramSchema,
+  llmWaterfallSchema,
+  llmTreemapSchema,
+  llmSunburstSchema,
+  llmSankeySchema,
+  llmCalendarSchema,
 ]);
 
 type LlmChartSpec = z.infer<typeof llmChartSpecSchema>;
@@ -161,6 +240,22 @@ function toPublicChartSpec(spec: LlmChartSpec): ChartSpec {
       return spec;
     case "gauge":
       return spec;
+    case "heatmap":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "boxplot":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "histogram":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "waterfall":
+      return { ...spec, data: rowsToRecords(spec.data) };
+    case "treemap":
+      return spec;
+    case "sunburst":
+      return spec;
+    case "sankey":
+      return spec;
+    case "calendar":
+      return spec;
   }
 }
 
@@ -177,7 +272,7 @@ const emptyQueryResult: QueryResult = { columns: [], rows: [], rowCount: 0 };
  * set, asks the model to produce a narrative answer plus a chart spec.
  */
 export async function synthesize(state: AgentStateType): Promise<AgentStateUpdate> {
-  const model = getChatModel().withStructuredOutput(synthesizeOutputSchema);
+  const model = getChatModel(state.llm).withStructuredOutput(synthesizeOutputSchema);
   const prompt = prompts.buildSynthesizePrompt(
     state.question,
     state.sql,

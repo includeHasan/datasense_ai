@@ -18,6 +18,27 @@ const userSchema = new Schema({
     type: Date,
     default: Date.now,
   },
+  // --- Bring-your-own LLM credentials (encrypted at rest) ---
+  // Presence of llmApiKeyEnc = "user has their own key" (unlimited usage).
+  llmApiKeyEnc: {
+    type: String,
+  },
+  llmBaseUrl: {
+    type: String,
+  },
+  llmModel: {
+    type: String,
+  },
+  // --- Free-tier monthly quota (app OPENAI_API_KEY) ---
+  // Calendar month the count applies to, "YYYY-MM" (UTC). A mismatch with the
+  // current month means the allowance has reset.
+  quotaMonth: {
+    type: String,
+  },
+  quotaCount: {
+    type: Number,
+    default: 0,
+  },
 });
 
 export type UserDocument = HydratedDocument<InferSchemaType<typeof userSchema>>;
@@ -33,6 +54,11 @@ export interface UserShape {
   email: string;
   passwordHash: string;
   createdAt: Date;
+  llmApiKeyEnc?: string;
+  llmBaseUrl?: string;
+  llmModel?: string;
+  quotaMonth?: string;
+  quotaCount?: number;
 }
 
 // Reuse an existing compiled model when this module is evaluated more than

@@ -140,18 +140,39 @@ export function buildGenerateQueryPrompt(
     "## Plan",
     plan,
     "",
-    dialect === "mongodb"
-      ? "Respond with ONLY the MongoDB aggregation pipeline (as JSON), no explanation, no markdown fences."
-      : "Respond with ONLY the SQL query, no explanation, no markdown fences.",
+    dialect === "mongodb" ? MONGODB_QUERY_FORMAT_INSTRUCTIONS : "Respond with ONLY the SQL query, no explanation, no markdown fences.",
   ].join("\n");
 }
 
 /**
+ * Shared instructions for the exact JSON envelope a MongoDB "query" must
+ * take, reused by both the generation and repair prompts so a repaired query
+ * is held to the same contract MongoSource/assertReadOnlyAggregation expect
+ * (see src/safety/mongo-guard.ts).
+ */
+const MONGODB_QUERY_FORMAT_INSTRUCTIONS = [
+  'Respond with ONLY a single JSON object of the shape {"collection": "<name>", "pipeline": [...]},',
+  'where "collection" is exactly one of the collection names listed above (under "Table: <name>") and',
+  '"pipeline" is a MongoDB aggregation pipeline: an array of stage objects (e.g. $match, $group, $sort,',
+  "$lookup, $limit, $project). No explanation, no markdown fences, no comments. The pipeline must be",
+  "read-only - never use $out, $merge, $function, $accumulator, or $where.",
+].join("\n");
+
+/**
  * Builds the prompt for the repair step: given a previously generated query
  * that failed to execute, the error message, and the schema profile, ask the
- * model to produce a corrected query.
+ * model to produce a corrected query. `dialect` determines whether the
+ * corrected query must be SQL text or the same {collection, pipeline} JSON
+ * envelope the generation step uses for MongoDB (see
+ * buildGenerateQueryPrompt) - defaults to "sql" for backward compatibility
+ * with any caller that hasn't threaded a dialect through yet.
  */
-export function buildRepairPrompt(sql: string, errorMessage: string, profile: SchemaProfile): string {
+export function buildRepairPrompt(
+  sql: string,
+  errorMessage: string,
+  profile: SchemaProfile,
+  dialect: Dialect = "sql",
+): string {
   return [
     "The following query failed to execute against the database.",
     "Use ONLY the tables and columns listed below. Do not invent columns or tables.",
@@ -166,7 +187,9 @@ export function buildRepairPrompt(sql: string, errorMessage: string, profile: Sc
     errorMessage,
     "",
     "Fix the query so it executes successfully and still answers the original intent.",
-    "Respond with ONLY the corrected query, no explanation, no markdown fences.",
+    dialect === "mongodb"
+      ? MONGODB_QUERY_FORMAT_INSTRUCTIONS
+      : "Respond with ONLY the corrected query, no explanation, no markdown fences.",
   ].join("\n");
 }
 
@@ -321,15 +344,39 @@ export function buildSynthesizePrompt(
     "",
     "## Choosing a chart kind",
     "Pick the chart kind that best fits the shape of the result, not just bar/line/pie/table/kpi:",
-    "- scatter: use when showing the correlation between two numeric columns.",
-    "- funnel: use for a multi-stage drop-off (e.g. signup -> activation -> purchase counts).",
+    "- scatter: use when showing the correlation between two numeric columns. Set sizeKey to a third",
+    "  numeric column to size each point (a bubble chart) when a third metric is meaningful, else null.",
+    "- funnel: use for a single-path multi-stage drop-off (e.g. signup -> activation -> purchase counts).",
+    "- sankey: use instead of funnel when the flow branches or merges between named stages/categories",
+    "  rather than a single strict sequence (nodes = every distinct stage name, links = flows between them).",
     "- radar: use for comparing multiple dimensions/metrics across a small number of entities.",
     "- gauge: use for a single KPI measured against a target or max (e.g. quota attainment).",
     "- combo: use when two series with different units/scales need to be shown together",
     "  (e.g. revenue as bars and growth rate as a line) - split them into barSeries/lineSeries.",
     "- area: like line, but use it to emphasize cumulative volume/magnitude over a sequence.",
     "- bar/line: set stacked=true when parts should sum to a whole, and orientation=\"horizontal\"",
-    "  when category labels are long. Leave stacked/orientation null otherwise.",
-    "- pie: set donut=true for a donut variant when appropriate, otherwise null.",
+    "  when category labels are long. Set normalized=true (only meaningful with stacked=true) to show",
+    "  each stack as a 100% proportion/mix instead of absolute volume. Leave any of these null otherwise.",
+    "- pie: set donut=true for a donut variant when appropriate, otherwise null. Prefer treemap over pie",
+    "  when there are more than ~6 categories, or when categories nest into subcategories.",
+    "- treemap / sunburst: use for nested part-to-whole breakdowns (e.g. category -> subcategory revenue).",
+    "  Each data row is one leaf, with \"path\" as the full root-to-leaf label sequence (e.g.",
+    "  [\"Electronics\", \"Phones\"]) and \"value\" as its numeric size - never nest objects directly.",
+    "  Prefer treemap by default; use sunburst only when the ring/depth framing is clearly more natural.",
+    "- heatmap: use for a value across two categorical dimensions at once (e.g. day-of-week x hour-of-day).",
+    "- calendar: use for one value per calendar date over a period (e.g. daily active users), to reveal",
+    "  day-of-week or seasonal patterns. data rows are {date: \"YYYY-MM-DD\", value}.",
+    "- boxplot: use to show the distribution/spread (not just the average) of a numeric column per",
+    "  category. The query MUST precompute min/q1/median/q3/max per category (e.g. with",
+    "  percentile_cont) - never pass raw unaggregated samples.",
+    "- histogram: use to show the distribution of a single numeric column across value ranges. The",
+    "  query MUST precompute the bins (a label like \"0-100\" and a count per bin) - never pass raw rows.",
+    "- waterfall: use to explain how a total changed via a sequence of additive/subtractive steps",
+    "  (e.g. starting revenue, plus new sales, minus churn, equals ending revenue). Mark any row that",
+    "  is a running total/subtotal (rendered as a full bar from zero, not a floating delta) by naming",
+    "  its boolean column via totalKey; leave totalKey null if every row is a plain delta.",
+    "- kpi: set target to render a bullet-style marker when the value has a known goal/quota, and/or",
+    "  trend to a short oldest-first array of recent values to render an inline sparkline. Leave both",
+    "  null when there is no target or no meaningful short history.",
   ].join("\n");
 }

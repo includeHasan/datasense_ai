@@ -7,7 +7,7 @@ import type { AgentStateType, AgentStateUpdate } from "../state.js";
  * describing which tables/columns to use and how to answer the question.
  */
 export async function plan(state: AgentStateType): Promise<AgentStateUpdate> {
-  const model = getChatModel();
+  const model = getChatModel(state.llm);
   const prompt = prompts.buildPlanPrompt(state.question, state.profile, state.history);
   const result = await model.invoke(prompt);
   const text = typeof result.content === "string" ? result.content : String(result.content);

@@ -199,3 +199,132 @@ describe("POST /reports", () => {
     60_000,
   );
 });
+
+/**
+ * Generates a report by exporting a conversation with one analysis message,
+ * returning the caller's token, the conversationId, and the persisted
+ * report's id (read from the terminal `final` SSE frame).
+ */
+async function generateSavedReport(): Promise<{
+  token: string;
+  conversationId: string;
+  reportId: string;
+}> {
+  const token = await registerUser();
+
+  const createResponse = await app.inject({
+    method: "POST",
+    url: "/conversations",
+    headers: { authorization: `Bearer ${token}` },
+    payload: { title: "Saved report chat" },
+  });
+  const conversation = createResponse.json();
+
+  const { Message } = await import("../src/models/message.js");
+  await Message.create({
+    conversationId: conversation.id,
+    role: "user",
+    question: "How is revenue trending?",
+  });
+  await Message.create({
+    conversationId: conversation.id,
+    role: "assistant",
+    answer: {
+      narrative: "Revenue grew steadily across both regions this quarter.",
+      chartSpec: null,
+      sql: "SELECT 1",
+      sampleRows: [{ region: "East", revenue: 100 }],
+      caveats: [],
+      answerType: "analysis",
+      suggestedFollowups: [],
+    },
+  });
+
+  const reportResponse = await app.inject({
+    method: "POST",
+    url: "/reports",
+    headers: { authorization: `Bearer ${token}` },
+    payload: { conversationId: conversation.id },
+  });
+  expect(reportResponse.statusCode).toBe(200);
+
+  const frames = parseSseFrames(reportResponse.payload);
+  const finalFrame = frames.find((f) => f.event === "final");
+  expect(finalFrame).toBeDefined();
+  const data = finalFrame!.data as { reportId: string };
+  expect(typeof data.reportId).toBe("string");
+
+  return { token, conversationId: conversation.id, reportId: data.reportId };
+}
+
+describe("GET /reports (saved report history)", () => {
+  it(
+    "lists a generated report for its owner and returns its full contents",
+    async () => {
+      const { token, conversationId, reportId } = await generateSavedReport();
+
+      // Appears in the owner's list as a lightweight summary (no sections).
+      const listResponse = await app.inject({
+        method: "GET",
+        url: "/reports",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(listResponse.statusCode).toBe(200);
+      const list = listResponse.json() as {
+        id: string;
+        title: string;
+        createdAt: string;
+      }[];
+      const summary = list.find((r) => r.id === reportId);
+      expect(summary).toBeDefined();
+      expect(summary!.title).toBe("Saved report chat");
+      expect(summary).not.toHaveProperty("sections");
+
+      // The full report is fetchable by id, with its sections and origin.
+      const getResponse = await app.inject({
+        method: "GET",
+        url: `/reports/${reportId}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(getResponse.statusCode).toBe(200);
+      const report = getResponse.json() as {
+        id: string;
+        title: string;
+        sections: { title: string; narrative: string }[];
+        conversationId?: string;
+      };
+      expect(report.id).toBe(reportId);
+      expect(report.title).toBe("Saved report chat");
+      expect(report.conversationId).toBe(conversationId);
+      expect(report.sections).toHaveLength(1);
+      expect(report.sections[0].narrative).toContain("Revenue grew steadily");
+    },
+    60_000,
+  );
+
+  it(
+    "returns 404 for a report owned by a different user",
+    async () => {
+      const { reportId } = await generateSavedReport();
+
+      const otherToken = await registerUser();
+      const response = await app.inject({
+        method: "GET",
+        url: `/reports/${reportId}`,
+        headers: { authorization: `Bearer ${otherToken}` },
+      });
+      expect(response.statusCode).toBe(404);
+    },
+    60_000,
+  );
+
+  it("returns 404 for a report that does not exist", async () => {
+    const token = await registerUser();
+    const response = await app.inject({
+      method: "GET",
+      url: `/reports/${new mongoose.Types.ObjectId().toString()}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});

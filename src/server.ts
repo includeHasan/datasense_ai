@@ -8,6 +8,7 @@ import { connectMongo } from "./db/mongo.js";
 import { registerSourceRoutes } from "./routes/sources.js";
 import { registerAskRoute } from "./routes/ask.js";
 import { registerAuthRoutes } from "./auth/routes.js";
+import { registerAccountRoutes } from "./routes/account.js";
 import { registerDemoRoutes } from "./routes/demo.js";
 import { registerConversationRoutes } from "./routes/conversations.js";
 import { registerReportRoutes } from "./routes/reports.js";
@@ -31,9 +32,16 @@ app.decorate("authenticate", async (request, reply) => {
   }
 });
 
-await app.register(multipart);
+await app.register(multipart, {
+  // Without an explicit limit, @fastify/multipart caps uploads at 1MB and
+  // rejects larger datasets with "request file too large". Raise it to the
+  // configured ceiling so real-world files (up to the product's ~100MB target)
+  // can be ingested.
+  limits: { fileSize: config.maxUploadBytes },
+});
 
 registerAuthRoutes(app);
+registerAccountRoutes(app);
 registerSourceRoutes(app);
 registerAskRoute(app);
 registerConversationRoutes(app);

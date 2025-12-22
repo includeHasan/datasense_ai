@@ -5,9 +5,9 @@ import { AgentState } from "./state.js";
 import { router } from "./nodes/router.js";
 import { converse } from "./nodes/converse.js";
 import { plan } from "./nodes/plan.js";
-import { generateQuery } from "./nodes/generate-query.js";
+import { makeGenerateQueryNode } from "./nodes/generate-query.js";
 import { makeExecuteNode } from "./nodes/execute.js";
-import { repair } from "./nodes/repair.js";
+import { makeRepairNode } from "./nodes/repair.js";
 import { synthesize } from "./nodes/synthesize.js";
 import { assemble } from "./nodes/assemble.js";
 
@@ -28,9 +28,9 @@ export function buildGraph(source: DataSource) {
     .addNode("router", router)
     .addNode("converse", converse)
     .addNode("planStep", plan)
-    .addNode("generateQuery", generateQuery)
+    .addNode("generateQuery", makeGenerateQueryNode(source))
     .addNode("execute", makeExecuteNode(source))
-    .addNode("repair", repair)
+    .addNode("repair", makeRepairNode(source))
     .addNode("synthesize", synthesize)
     .addNode("assemble", assemble)
     .addEdge(START, "router")

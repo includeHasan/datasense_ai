@@ -90,6 +90,39 @@ describe("inferRelationships", () => {
     });
   });
 
+  it("recognizes MongoDB's '_id' convention as a primary-key-shaped column, not just 'id'", () => {
+    const tables: Tables = [
+      {
+        name: "customers",
+        columns: [
+          { name: "_id", type: "objectId", nullable: false },
+          { name: "name", type: "string", nullable: false },
+        ],
+        rowCount: 1,
+        sampleRows: [{ _id: "abc123", name: "Alice" }],
+      },
+      {
+        name: "orders",
+        columns: [
+          { name: "_id", type: "objectId", nullable: false },
+          { name: "customerId", type: "objectId", nullable: false },
+        ],
+        rowCount: 1,
+        sampleRows: [{ _id: "order1", customerId: "abc123" }],
+      },
+    ];
+
+    const relationships = inferRelationships(tables);
+
+    expect(relationships).toContainEqual({
+      fromTable: "orders",
+      fromColumn: "customerId",
+      toTable: "customers",
+      toColumn: "_id",
+      confidence: "inferred",
+    });
+  });
+
   it("does not fabricate a relationship when no matching referenced table exists", () => {
     const tables: Tables = [
       {

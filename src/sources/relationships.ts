@@ -47,9 +47,16 @@ function findTableByName(tables: ProfileTable[], candidates: string[]): ProfileT
   return tables.find((table) => wanted.has(table.name.toLowerCase()));
 }
 
-/** Finds a primary-key-shaped column on a table: "id" or "<table>_id". */
+/**
+ * Finds a primary-key-shaped column on a table: "id" or "<table>_id" (the SQL
+ * convention), or "_id" (MongoDB's convention - every document's real
+ * primary key field is literally named "_id", not "id").
+ */
 function findPrimaryKeyColumn(table: ProfileTable, base: string): { name: string; type: string } | undefined {
-  const idColumn = table.columns.find((col) => col.name.toLowerCase() === "id");
+  const idColumn = table.columns.find((col) => {
+    const lower = col.name.toLowerCase();
+    return lower === "id" || lower === "_id";
+  });
   if (idColumn) return idColumn;
 
   const namedColumn = table.columns.find(

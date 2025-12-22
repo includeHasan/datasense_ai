@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getChatModel } from "./llm.js";
+import { getChatModel, type LlmOverrides } from "./llm.js";
 import { buildSuggestQuestionsPrompt } from "./prompts.js";
 import type { SchemaProfile } from "../sources/types.js";
 
@@ -12,8 +12,11 @@ const suggestQuestionsOutputSchema = z.object({
  * connected data source, based purely on its schema profile (no question
  * asked yet). Used to give users an idea of what to ask and how to phrase it.
  */
-export async function suggestQuestions(profile: SchemaProfile): Promise<string[]> {
-  const model = getChatModel().withStructuredOutput(suggestQuestionsOutputSchema);
+export async function suggestQuestions(
+  profile: SchemaProfile,
+  llm?: LlmOverrides,
+): Promise<string[]> {
+  const model = getChatModel(llm).withStructuredOutput(suggestQuestionsOutputSchema);
   const prompt = buildSuggestQuestionsPrompt(profile);
   const result = await model.invoke(prompt);
   return result.questions.slice(0, 10);

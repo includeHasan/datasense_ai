@@ -56,6 +56,7 @@ export class DuckDBSource implements DataSource {
           ? await DuckDBSource.loadExcel(connection, buffer, tmpDir)
           : await DuckDBSource.loadCsvOrJson(connection, buffer, originalFilename, declaredType, tmpDir);
 
+      await DuckDBSource.lockDownExternalAccess(connection);
       return new DuckDBSource(instance, connection, tableNames);
     } finally {
       await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
@@ -92,10 +93,24 @@ export class DuckDBSource implements DataSource {
         tableNames.push(...loaded);
       }
 
+      await DuckDBSource.lockDownExternalAccess(connection);
       return new DuckDBSource(instance, connection, tableNames);
     } finally {
       await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+
+  /**
+   * Disables DuckDB's own filesystem/network access once all ingestion is
+   * done, so a hallucinated or prompt-injected agent-generated SELECT can't
+   * read arbitrary server files via table functions like read_csv_auto or
+   * read_text (e.g. `SELECT * FROM read_csv_auto('/etc/passwd')`) — the
+   * assertReadOnlySelect guard only checks statement *type*, not what a
+   * SELECT's table functions can reach. Already-loaded tables stay queryable;
+   * DuckDB does not allow re-enabling external access once disabled.
+   */
+  private static async lockDownExternalAccess(connection: DuckDBConnection): Promise<void> {
+    await connection.run("SET enable_external_access=false;");
   }
 
   private static async loadCsvOrJson(

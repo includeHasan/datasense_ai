@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import type { SchemaProfile, QueryResult } from "../sources/types.js";
 import type { ChartSpec } from "../schemas/chart-spec.js";
 import type { FinalAnswer } from "../schemas/answer.js";
+import type { LlmOverrides } from "./llm.js";
 
 /**
  * Graph state for the data-sense agent.
@@ -73,6 +74,13 @@ export const AgentState = Annotation.Root({
   suggestedFollowups: Annotation<string[]>({
     reducer: (_current, update) => update,
     default: () => [],
+  }),
+  // Per-request LLM overrides (bring-your-own-credentials). Empty object means
+  // "use the app's default key/model" (free tier). Threaded to every node so
+  // each getChatModel(state.llm) call honours the caller's chosen provider.
+  llm: Annotation<LlmOverrides>({
+    reducer: (_current, update) => update,
+    default: () => ({}),
   }),
 });
 

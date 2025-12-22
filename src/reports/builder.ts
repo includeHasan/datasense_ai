@@ -2,7 +2,7 @@ import { z } from "zod";
 import { buildGraph } from "../agent/graph.js";
 import { runAgentStreaming } from "../agent/run.js";
 import type { ActivityEvent } from "../agent/events.js";
-import { getChatModel } from "../agent/llm.js";
+import { getChatModel, type LlmOverrides } from "../agent/llm.js";
 import { buildReportOutlinePrompt } from "../agent/prompts.js";
 import { Conversation } from "../models/conversation.js";
 import { Message } from "../models/message.js";
@@ -53,8 +53,9 @@ type OutlineSection = z.infer<typeof outlineSchema>["sections"][number];
 async function draftOutline(
   profile: SchemaProfile,
   preferences: ReportPreferences,
+  llm?: LlmOverrides,
 ): Promise<OutlineSection[]> {
-  const model = getChatModel().withStructuredOutput(outlineSchema);
+  const model = getChatModel(llm).withStructuredOutput(outlineSchema);
   const prompt = buildReportOutlinePrompt(profile, preferences);
   const result = await model.invoke(prompt);
   return result.sections;
@@ -164,9 +165,10 @@ export async function buildGeneratedReport(
   profile: SchemaProfile,
   preferences: ReportPreferences,
   onEvent: (event: ActivityEvent) => void,
+  llm?: LlmOverrides,
 ): Promise<GeneratedReport> {
   onEvent({ phase: "outline", label: "Drafting report outline", status: "running" });
-  const outline = await draftOutline(profile, preferences);
+  const outline = await draftOutline(profile, preferences, llm);
   onEvent({
     phase: "outline",
     label: "Drafting report outline",
@@ -197,6 +199,7 @@ export async function buildGeneratedReport(
         chartSpec: null,
         caveats: [],
         suggestedFollowups: [],
+        llm: llm ?? {},
       },
       onEvent,
     );

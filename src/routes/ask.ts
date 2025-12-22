@@ -7,6 +7,8 @@ import { startSse } from "../agent/sse.js";
 import { getProfileForOwner, getSourceForOwner } from "../sources/registry.js";
 import { Conversation } from "../models/conversation.js";
 import { Message } from "../models/message.js";
+import { User } from "../models/user.js";
+import { checkQuota, consumeQuota, resolveLlm } from "../auth/llm-access.js";
 
 const askBodySchema = z.object({
   question: z.string().min(1, "question is required"),
@@ -51,12 +53,32 @@ export function registerAskRoute(app: FastifyInstance): void {
     }
 
     const { id } = request.params;
-    const source = getSourceForOwner(id, request.user.id);
+    const source = await getSourceForOwner(id, request.user.id);
     if (!source) {
       return reply.code(404).send({ error: `No source found with id "${id}".` });
     }
 
-    const profile = getProfileForOwner(id, request.user.id);
+    const profile = await getProfileForOwner(id, request.user.id);
+
+    // Freemium quota + bring-your-own-credentials: resolve which LLM this
+    // user's query runs against, and (for free-tier users) reject up-front
+    // with a plain JSON 402 if they've exhausted their monthly allowance -
+    // before hijacking the reply for SSE.
+    const user = await User.findById(request.user.id);
+    if (!user) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    const { overrides, usesOwnKey } = resolveLlm(user);
+    if (!usesOwnKey) {
+      const quota = checkQuota(user);
+      if (!quota.allowed) {
+        return reply.code(402).send({
+          error:
+            "You've used your 5 free queries this month. Add your own API key in Settings to continue.",
+          code: "QUOTA_EXCEEDED",
+        });
+      }
+    }
 
     let conversation;
     if (parsed.data.conversationId) {
@@ -105,6 +127,7 @@ export function registerAskRoute(app: FastifyInstance): void {
           chartSpec: null,
           caveats: [],
           suggestedFollowups: [],
+          llm: overrides,
         },
         (event) => {
           trace.push(event);
@@ -116,6 +139,13 @@ export function registerAskRoute(app: FastifyInstance): void {
       await Message.create({ conversationId, role: "assistant", answer: finalAnswer, trace });
       conversation.updatedAt = new Date();
       await conversation.save();
+
+      // Count this successful query against the free-tier allowance (no-op for
+      // users on their own key). Consume only after success so an error
+      // doesn't burn a query.
+      if (!usesOwnKey) {
+        await consumeQuota(user);
+      }
 
       sse.send({ ...finalAnswer, conversationId }, "final");
     } catch (error) {

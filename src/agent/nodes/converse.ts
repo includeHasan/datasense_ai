@@ -14,7 +14,7 @@ const converseOutputSchema = z.object({
  * profile, without running the SQL pipeline. Leaves sql/chartSpec untouched.
  */
 export async function converse(state: AgentStateType): Promise<AgentStateUpdate> {
-  const model = getChatModel().withStructuredOutput(converseOutputSchema);
+  const model = getChatModel(state.llm).withStructuredOutput(converseOutputSchema);
   const prompt = prompts.buildConversePrompt(state.question, state.profile, state.history);
   const result = await model.invoke(prompt);
   return {
