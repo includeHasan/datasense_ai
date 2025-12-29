@@ -94,8 +94,14 @@ export function ReportDialog({ token, sourceId, activeConversationId }: ReportDi
       });
       setResult(response);
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "Failed to generate report.";
-      toast.error(message);
+      if (error instanceof ApiError && error.status === 402) {
+        toast.error(
+          "You've used your 5 free queries this month - add your own API key in Settings to continue.",
+        );
+      } else {
+        const message = error instanceof ApiError ? error.message : "Failed to generate report.";
+        toast.error(message);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -218,6 +224,9 @@ export function ReportDialog({ token, sourceId, activeConversationId }: ReportDi
             <AgentActivityTrace events={events} />
             <p className="text-sm text-foreground">
               <span className="font-medium">{result.title}</span> is ready.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Saved to your reports - find it anytime under &quot;Reports&quot; in the sidebar.
             </p>
           </div>
         )}

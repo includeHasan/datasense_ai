@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { SquarePen, Eye, LayoutDashboard } from "lucide-react";
+import {
+  SquarePen,
+  Eye,
+  LayoutDashboard,
+  FileText,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 
 import type { Conversation, SchemaProfile } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -16,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { SchemaSummary } from "@/components/schema-summary";
 import { ReportDialog } from "@/components/report-dialog";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { cn } from "@/lib/utils";
 
 function summarizeProfile(profile: SchemaProfile): string {
@@ -40,6 +48,9 @@ interface AppSidebarProps {
   /** Enables the "Generate report" action; omit to hide it entirely (e.g. on the login-free demo page). */
   token?: string;
   sourceId?: string | null;
+  /** Controls the Settings dialog externally (e.g. to auto-open it after a 402 quota error). */
+  settingsOpen?: boolean;
+  onSettingsOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -61,7 +72,50 @@ export function AppSidebar({
   onSelectConversation,
   token,
   sourceId,
+  settingsOpen,
+  onSettingsOpenChange,
 }: AppSidebarProps) {
+  const [collapsed, setCollapsed] = React.useState(false);
+
+  // Hydrate the collapsed preference after mount (deferred into a microtask,
+  // matching the app's other localStorage hydration) so it persists across
+  // navigation/reload without risking an SSR hydration mismatch.
+  React.useEffect(() => {
+    Promise.resolve()
+      .then(() => {
+        if (localStorage.getItem("ds_sidebar_collapsed") === "true") setCollapsed(true);
+      })
+      .catch(() => {});
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("ds_sidebar_collapsed", String(next));
+      } catch {
+        // Preference just won't persist this session; not fatal.
+      }
+      return next;
+    });
+  }
+
+  if (collapsed) {
+    return (
+      <aside className="flex h-full w-12 flex-shrink-0 flex-col items-center border-r border-border bg-card py-4">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          onClick={toggleCollapsed}
+        >
+          <PanelLeftOpen />
+        </Button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col gap-4 border-r border-border bg-card p-4">
       <div className="flex flex-col gap-1">
@@ -74,6 +128,16 @@ export function AppSidebar({
               {badge}
             </span>
           )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            className="ml-auto"
+            onClick={toggleCollapsed}
+          >
+            <PanelLeftClose />
+          </Button>
         </div>
         {tagline && <p className="text-xs text-muted-foreground">{tagline}</p>}
       </div>
@@ -128,6 +192,26 @@ export function AppSidebar({
             <LayoutDashboard />
             Dashboard
           </Button>
+        )}
+
+        {token && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-start gap-2"
+            render={<Link href="/reports" />}
+          >
+            <FileText />
+            Reports
+          </Button>
+        )}
+
+        {token && (
+          <SettingsDialog
+            token={token}
+            open={settingsOpen}
+            onOpenChange={onSettingsOpenChange}
+          />
         )}
       </nav>
 

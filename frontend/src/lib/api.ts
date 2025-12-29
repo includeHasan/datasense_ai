@@ -9,7 +9,11 @@ import type {
   FinalAnswer,
   GenerateReportRequest,
   GenerateReportResponse,
+  LlmAccount,
   PinToDashboardRequest,
+  ReportSummary,
+  SaveLlmRequest,
+  SavedReport,
   SchemaProfile,
 } from "./types";
 
@@ -214,6 +218,42 @@ export async function ask(
   return handleResponse(response);
 }
 
+// --- LLM credentials + freemium quota (authenticated) ---
+
+/** Fetches the user's LLM-access status (usage + whether their own key is set). */
+export async function getLlmAccount(token: string): Promise<LlmAccount> {
+  const response = await fetch(`${getApiBaseUrl()}/account/llm`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  return handleResponse(response);
+}
+
+/** Stores the user's own OpenAI-compatible credentials (key is encrypted server-side). */
+export async function saveLlmAccount(
+  token: string,
+  body: SaveLlmRequest
+): Promise<LlmAccount> {
+  const response = await fetch(`${getApiBaseUrl()}/account/llm`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify(body),
+  });
+  return handleResponse(response);
+}
+
+/** Removes the user's own key, reverting them to the free tier. */
+export async function clearLlmAccount(token: string): Promise<LlmAccount> {
+  const response = await fetch(`${getApiBaseUrl()}/account/llm`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  return handleResponse(response);
+}
+
 // --- Conversation endpoints (authenticated) ---
 
 export async function createConversation(
@@ -321,6 +361,28 @@ export async function generateReport(
     { token },
     onEvent
   );
+}
+
+/**
+ * Lists the current user's saved reports, most recent first. Returns
+ * lightweight summaries only (no section bodies) - fetch a single report's
+ * full contents with `getReport`.
+ */
+export async function listReports(token: string): Promise<ReportSummary[]> {
+  const response = await fetch(`${getApiBaseUrl()}/reports`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  return handleResponse(response);
+}
+
+/** Fetches one saved report's full `{ title, sections, ... }` payload. */
+export async function getReport(token: string, id: string): Promise<SavedReport> {
+  const response = await fetch(`${getApiBaseUrl()}/reports/${id}`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  return handleResponse(response);
 }
 
 // --- Dashboard endpoints (authenticated) ---

@@ -39,6 +39,7 @@ export interface BarChartSpec {
   data: Record<string, unknown>[];
   stacked?: boolean | null;
   orientation?: ChartOrientation | null;
+  normalized?: boolean | null;
 }
 
 export interface LineChartSpec {
@@ -49,6 +50,7 @@ export interface LineChartSpec {
   data: Record<string, unknown>[];
   stacked?: boolean | null;
   orientation?: ChartOrientation | null;
+  normalized?: boolean | null;
 }
 
 export interface AreaChartSpec {
@@ -59,6 +61,7 @@ export interface AreaChartSpec {
   data: Record<string, unknown>[];
   stacked?: boolean | null;
   orientation?: ChartOrientation | null;
+  normalized?: boolean | null;
 }
 
 export interface PieChartSpec {
@@ -83,6 +86,8 @@ export interface KpiChartSpec {
   label: string;
   value: number | string;
   delta?: number | null;
+  target?: number | null;
+  trend?: number[] | null;
 }
 
 export interface ScatterChartSpec {
@@ -91,6 +96,7 @@ export interface ScatterChartSpec {
   xKey: string;
   yKey: string;
   seriesKey?: string | null;
+  sizeKey?: string | null;
   data: Record<string, unknown>[];
 }
 
@@ -136,6 +142,89 @@ export interface GaugeChartSpec {
   max: number;
 }
 
+export interface HeatmapChartSpec {
+  kind: "heatmap";
+  title: string;
+  xKey: string;
+  yKey: string;
+  valueKey: string;
+  data: Record<string, unknown>[];
+}
+
+export interface BoxplotChartSpec {
+  kind: "boxplot";
+  title: string;
+  categoryKey: string;
+  minKey: string;
+  q1Key: string;
+  medianKey: string;
+  q3Key: string;
+  maxKey: string;
+  data: Record<string, unknown>[];
+}
+
+export interface HistogramChartSpec {
+  kind: "histogram";
+  title: string;
+  binKey: string;
+  countKey: string;
+  data: Record<string, unknown>[];
+}
+
+export interface WaterfallChartSpec {
+  kind: "waterfall";
+  title: string;
+  categoryKey: string;
+  valueKey: string;
+  totalKey?: string | null;
+  data: Record<string, unknown>[];
+}
+
+export interface HierarchyNode {
+  path: string[];
+  value: number;
+}
+
+export interface TreemapChartSpec {
+  kind: "treemap";
+  title: string;
+  data: HierarchyNode[];
+}
+
+export interface SunburstChartSpec {
+  kind: "sunburst";
+  title: string;
+  data: HierarchyNode[];
+}
+
+export interface SankeyNode {
+  name: string;
+}
+
+export interface SankeyLink {
+  source: string;
+  target: string;
+  value: number;
+}
+
+export interface SankeyChartSpec {
+  kind: "sankey";
+  title: string;
+  nodes: SankeyNode[];
+  links: SankeyLink[];
+}
+
+export interface CalendarCell {
+  date: string;
+  value: number;
+}
+
+export interface CalendarChartSpec {
+  kind: "calendar";
+  title: string;
+  data: CalendarCell[];
+}
+
 export type ChartSpec =
   | BarChartSpec
   | LineChartSpec
@@ -147,7 +236,15 @@ export type ChartSpec =
   | ComboChartSpec
   | FunnelChartSpec
   | RadarChartSpec
-  | GaugeChartSpec;
+  | GaugeChartSpec
+  | HeatmapChartSpec
+  | BoxplotChartSpec
+  | HistogramChartSpec
+  | WaterfallChartSpec
+  | TreemapChartSpec
+  | SunburstChartSpec
+  | SankeyChartSpec
+  | CalendarChartSpec;
 
 export type AnswerType = "analysis" | "conversation";
 
@@ -164,6 +261,30 @@ export interface FinalAnswer {
 export interface AuthUser {
   id: string;
   email: string;
+}
+
+// --- LLM credentials + freemium quota (GET/PUT/DELETE /account/llm) ---
+
+/**
+ * The user's LLM-access status. Mirrors the backend's /account/llm response.
+ * NB: the stored API key is never returned - only `hasOwnKey` reveals whether
+ * one is set.
+ */
+export interface LlmAccount {
+  hasOwnKey: boolean;
+  baseUrl: string | null;
+  model: string | null;
+  freeQueriesLimit: number;
+  freeQueriesUsed: number;
+  freeQueriesRemaining: number;
+  month: string;
+}
+
+/** Body for PUT /account/llm (set your own OpenAI-compatible credentials). */
+export interface SaveLlmRequest {
+  apiKey: string;
+  baseUrl?: string;
+  model: string;
 }
 
 /** Mirrors the backend's src/agent/events.ts ActivityEvent shape. */
@@ -247,10 +368,32 @@ export interface ReportSection {
   sampleRows: Record<string, unknown>[];
 }
 
-/** The terminal SSE payload of POST /reports: the full report to render. */
+/**
+ * The terminal SSE payload of POST /reports: the full report to render, plus
+ * the `reportId` of the copy the backend persisted (so the report survives a
+ * refresh and shows up under /reports).
+ */
 export interface GenerateReportResponse {
   title: string;
   sections: ReportSection[];
+  reportId: string;
+}
+
+/** Lightweight record for the saved-reports list (GET /reports). */
+export interface ReportSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+/** A single persisted report with its full sections (GET /reports/:id). */
+export interface SavedReport {
+  id: string;
+  title: string;
+  sections: ReportSection[];
+  sourceId?: string;
+  conversationId?: string;
+  createdAt: string;
 }
 
 // --- Dashboard (pinned answers) ---

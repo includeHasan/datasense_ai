@@ -7,7 +7,17 @@ import autoTable from "jspdf-autotable";
 import type ReactECharts from "echarts-for-react";
 
 import { ChartRenderer } from "@/components/chart-renderer";
-import type { ChartSpec, GenerateReportResponse } from "@/lib/types";
+import type { ChartSpec, ReportSection } from "@/lib/types";
+
+/**
+ * The minimal shape needed to build a PDF: a title and its sections. Both the
+ * freshly-generated report (`GenerateReportResponse`) and a persisted one
+ * (`SavedReport`) satisfy this, so either can be downloaded directly.
+ */
+export interface ReportPdfInput {
+  title: string;
+  sections: ReportSection[];
+}
 
 /**
  * Client-side PDF assembly for generated reports. The backend only ever
@@ -103,9 +113,31 @@ async function rasterizeChart(spec: ChartSpec): Promise<string | null> {
   }
 }
 
+/**
+ * jsPDF's built-in fonts (Helvetica etc.) only encode Latin-1 (WinAnsi). Any
+ * character outside that range — the ₹ rupee sign (U+20B9), emoji, other
+ * scripts — renders as garbage AND corrupts the kerning of the surrounding
+ * text (the "A c r o s s" letter-spacing artifact). Since embedding a full
+ * Unicode font would bloat the bundle (and still wouldn't cover emoji), we
+ * substitute the common symbols we care about and drop the rest so the
+ * remaining text renders cleanly.
+ */
+function sanitizePdfText(text: string): string {
+  return text
+    .replace(/₹/g, "Rs ") // ₹ Indian Rupee
+    .replace(/[‘’′]/g, "'") // curly single quotes / prime
+    .replace(/[“”]/g, '"') // curly double quotes
+    .replace(/[–—]/g, "-") // en/em dash
+    .replace(/…/g, "...") // ellipsis
+    .replace(/ /g, " ") // non-breaking space
+    // Drop anything the core font can't encode (emoji, other scripts). Keep
+    // newlines/tabs and the printable Latin-1 range.
+    .replace(/[^\n\t\x20-\xFF]/g, "");
+}
+
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  return String(value);
+  return sanitizePdfText(String(value));
 }
 
 function slugify(value: string): string {
@@ -122,13 +154,13 @@ function slugify(value: string): string {
  * image (if any), and a data table of sample rows (unless the section's
  * chart already is a table).
  */
-export async function buildReportPdf(report: GenerateReportResponse): Promise<void> {
+export async function buildReportPdf(report: ReportPdfInput): Promise<void> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
   doc.setTextColor(INK);
-  doc.text(report.title, PAGE_MARGIN, 25);
+  doc.text(sanitizePdfText(report.title), PAGE_MARGIN, 25);
 
   doc.setDrawColor(PINE);
   doc.setLineWidth(0.6);
@@ -153,7 +185,11 @@ export async function buildReportPdf(report: GenerateReportResponse): Promise<vo
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
     doc.setTextColor(PINE);
-    doc.text(`${String(index + 1).padStart(2, "0")}  ${section.title}`, PAGE_MARGIN, cursorY);
+    doc.text(
+      `${String(index + 1).padStart(2, "0")}  ${sanitizePdfText(section.title)}`,
+      PAGE_MARGIN,
+      cursorY,
+    );
     cursorY += 4;
 
     doc.setDrawColor(RULE);
@@ -164,7 +200,10 @@ export async function buildReportPdf(report: GenerateReportResponse): Promise<vo
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10.5);
     doc.setTextColor(INK);
-    const narrativeLines = doc.splitTextToSize(section.narrative, CONTENT_WIDTH) as string[];
+    const narrativeLines = doc.splitTextToSize(
+      sanitizePdfText(section.narrative),
+      CONTENT_WIDTH,
+    ) as string[];
     for (const line of narrativeLines) {
       ensureSpace(6);
       doc.text(line, PAGE_MARGIN, cursorY);
@@ -190,7 +229,7 @@ export async function buildReportPdf(report: GenerateReportResponse): Promise<vo
       ensureSpace(20);
       autoTable(doc, {
         startY: cursorY,
-        head: [columns],
+        head: [columns.map((column) => sanitizePdfText(column))],
         body: rows.map((row) => columns.map((column) => formatCell(row[column]))),
         margin: { left: PAGE_MARGIN, right: PAGE_MARGIN },
         styles: { fontSize: 8, textColor: INK, lineColor: RULE },

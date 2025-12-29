@@ -41,11 +41,18 @@ import { cn } from "@/lib/utils";
 const ACCEPTED_EXTENSIONS = [".csv", ".json", ".xlsx", ".xls"];
 
 const dbSchema = z.object({
-  kind: z.enum(["postgres", "mysql", "sqlite"]),
+  kind: z.enum(["postgres", "mysql", "sqlite", "mongodb"]),
   connectionString: z.string().min(1, "Connection string is required"),
 });
 
 type DbValues = z.infer<typeof dbSchema>;
+
+const CONNECTION_STRING_PLACEHOLDERS: Record<DbValues["kind"], string> = {
+  postgres: "postgres://user:password@host:5432/db",
+  mysql: "mysql://user:password@host:3306/db",
+  sqlite: "/path/to/database.sqlite",
+  mongodb: "mongodb://user:password@host:27017/db",
+};
 
 interface SourceConnectProps {
   token: string;
@@ -142,6 +149,7 @@ function ConnectDbTab({ token, onConnected }: SourceConnectProps) {
     resolver: zodResolver(dbSchema),
     defaultValues: { kind: "postgres", connectionString: "" },
   });
+  const selectedKind = form.watch("kind");
 
   async function onSubmit(values: DbValues) {
     setIsSubmitting(true);
@@ -182,6 +190,7 @@ function ConnectDbTab({ token, onConnected }: SourceConnectProps) {
                     <SelectItem value="postgres">Postgres</SelectItem>
                     <SelectItem value="mysql">MySQL</SelectItem>
                     <SelectItem value="sqlite">SQLite</SelectItem>
+                    <SelectItem value="mongodb">MongoDB</SelectItem>
                   </SelectContent>
                 </Select>
               </FormControl>
@@ -198,7 +207,7 @@ function ConnectDbTab({ token, onConnected }: SourceConnectProps) {
               <FormLabel>Connection string</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="postgres://user:password@host:5432/db"
+                  placeholder={CONNECTION_STRING_PLACEHOLDERS[selectedKind]}
                   {...field}
                 />
               </FormControl>

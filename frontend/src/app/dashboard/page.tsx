@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pin } from "lucide-react";
+import { PinOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth-provider";
@@ -75,6 +75,7 @@ export default function DashboardPage() {
       <AppSidebar
         profile={null}
         onNewChat={() => router.push("/")}
+        token={token}
         footer={
           <>
             <p className="truncate font-mono text-xs text-muted-foreground">{user.email}</p>
@@ -118,7 +119,7 @@ export default function DashboardPage() {
                       aria-label="Unpin from dashboard"
                       onClick={() => handleUnpin(item.id)}
                     >
-                      <Pin className="size-4" />
+                      <PinOff className="size-4" />
                     </Button>
                   </div>
 

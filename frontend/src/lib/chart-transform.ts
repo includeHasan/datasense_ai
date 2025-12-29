@@ -47,6 +47,14 @@ export function compatibleKinds(spec: ChartSpec): ChartSpec["kind"][] {
     case "funnel":
     case "radar":
     case "gauge":
+    case "heatmap":
+    case "boxplot":
+    case "histogram":
+    case "waterfall":
+    case "treemap":
+    case "sunburst":
+    case "sankey":
+    case "calendar":
       return [];
     default: {
       const exhaustiveCheck: never = spec;

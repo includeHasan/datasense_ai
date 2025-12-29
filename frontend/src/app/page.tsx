@@ -37,6 +37,12 @@ function getApiBaseUrl(): string {
   return url;
 }
 
+// Persist the active source + conversation so a page reload restores the
+// workspace instead of dumping the user back on the "connect a source" screen
+// (sources are now durable server-side, so they survive a refresh/restart).
+const ACTIVE_SOURCE_KEY = "ds_active_source";
+const ACTIVE_CONVERSATION_KEY = "ds_active_conversation";
+
 /**
  * Reconstructs ChatTurn[] from a conversation's persisted Message docs,
  * pairing up consecutive user -> assistant messages (the order they're
@@ -71,6 +77,8 @@ export default function Home() {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = React.useState(false);
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = React.useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = React.useState(true);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -92,6 +100,79 @@ export default function Home() {
   React.useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
+
+  // Restore the last active conversation (and its data source) on load so a
+  // refresh doesn't lose the session. Deferred into a microtask (matching the
+  // auth-provider hydration pattern) so we only kick off the async reads here
+  // rather than touching localStorage/state directly in the effect body.
+  React.useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    Promise.resolve()
+      .then(async () => {
+        const storedConversationId =
+          typeof window !== "undefined" ? localStorage.getItem(ACTIVE_CONVERSATION_KEY) : null;
+        const storedSourceId =
+          typeof window !== "undefined" ? localStorage.getItem(ACTIVE_SOURCE_KEY) : null;
+
+        // The source to restore: the active conversation's source takes
+        // precedence (so a selected past chat lands on its own data), falling
+        // back to a standalone stored source (a connected-but-not-yet-asked
+        // session).
+        let sourceToRestore = storedSourceId;
+
+        if (storedConversationId) {
+          try {
+            const conversation = await api.getConversation(token, storedConversationId);
+            if (cancelled) return;
+            setTurns(messagesToTurns(conversation.messages));
+            setActiveConversationId(storedConversationId);
+            if (conversation.sourceId) sourceToRestore = conversation.sourceId;
+          } catch {
+            // Conversation was deleted or isn't ours; drop the stale pointer.
+            localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+          }
+        }
+
+        if (sourceToRestore) {
+          try {
+            const restoredProfile = await api.getProfile(token, sourceToRestore);
+            if (cancelled) return;
+            setSourceId(sourceToRestore);
+            setProfile(restoredProfile);
+          } catch {
+            // Source has expired (TTL) or is gone. Leave the conversation
+            // viewable in read-only mode; drop the stale source pointer.
+            localStorage.removeItem(ACTIVE_SOURCE_KEY);
+          }
+        }
+      })
+      .catch(() => {
+        // Corrupt storage or unexpected error; start clean.
+      })
+      .finally(() => {
+        if (!cancelled) setIsRestoring(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  // Persist the active source/conversation once restoration is done, so we
+  // don't wipe the stored pointers before the restore effect has read them.
+  React.useEffect(() => {
+    if (isRestoring || typeof window === "undefined") return;
+    if (sourceId) localStorage.setItem(ACTIVE_SOURCE_KEY, sourceId);
+    else localStorage.removeItem(ACTIVE_SOURCE_KEY);
+  }, [sourceId, isRestoring]);
+
+  React.useEffect(() => {
+    if (isRestoring || typeof window === "undefined") return;
+    if (activeConversationId) localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+    else localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+  }, [activeConversationId, isRestoring]);
 
   function handleConnected(newSourceId: string, newProfile: SchemaProfile) {
     setSourceId(newSourceId);
@@ -131,9 +212,16 @@ export default function Home() {
       setActiveConversationId(conversationId);
       refreshConversations();
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : "Failed to get an answer.";
-      toast.error(message);
+      if (error instanceof ApiError && error.status === 402) {
+        toast.error(
+          "You've used your 5 free queries this month - add your own API key in Settings to continue.",
+        );
+        setSettingsOpen(true);
+      } else {
+        const message =
+          error instanceof ApiError ? error.message : "Failed to get an answer.";
+        toast.error(message);
+      }
     } finally {
       setIsAsking(false);
       setActivityEvents([]);
@@ -151,6 +239,22 @@ export default function Home() {
       const conversation = await api.getConversation(token, conversationId);
       setTurns(messagesToTurns(conversation.messages));
       setActiveConversationId(conversationId);
+
+      // Re-bind the conversation's data source so the chat renders (and can be
+      // continued). If the source has expired, show the conversation read-only.
+      if (conversation.sourceId) {
+        try {
+          const restoredProfile = await api.getProfile(token, conversation.sourceId);
+          setSourceId(conversation.sourceId);
+          setProfile(restoredProfile);
+        } catch {
+          setSourceId(null);
+          setProfile(null);
+        }
+      } else {
+        setSourceId(null);
+        setProfile(null);
+      }
     } catch (error) {
       const message =
         error instanceof ApiError ? error.message : "Failed to load conversation.";
@@ -176,6 +280,10 @@ export default function Home() {
   }
 
   function handleLogout() {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(ACTIVE_SOURCE_KEY);
+      localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    }
     logout();
     router.push("/login");
   }
@@ -210,6 +318,11 @@ export default function Home() {
     return <LandingPage />;
   }
 
+  // A live source is one we can actually query; a viewed chat may outlive its
+  // source (expired TTL), in which case it renders read-only.
+  const hasLiveSource = Boolean(sourceId && profile);
+  const isViewingChat = turns.length > 0;
+
   return (
     <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden">
       <AppSidebar
@@ -221,6 +334,8 @@ export default function Home() {
         onSelectConversation={handleSelectConversation}
         token={token}
         sourceId={sourceId}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={setSettingsOpen}
         footer={
           <>
             <p className="truncate font-mono text-xs text-muted-foreground">{user.email}</p>
@@ -237,11 +352,15 @@ export default function Home() {
       />
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {!sourceId || !profile ? (
+        {isRestoring ? (
+          <div className="flex flex-1 items-center justify-center p-8">
+            <p className="text-sm text-muted-foreground">Restoring your workspace...</p>
+          </div>
+        ) : !hasLiveSource && !isViewingChat ? (
           <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-6">
             <SourceConnect token={token} onConnected={handleConnected} />
           </div>
-        ) : turns.length === 0 ? (
+        ) : !isViewingChat ? (
           <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 p-6">
             <h1 className="font-heading text-center text-2xl font-semibold text-foreground">
               What do you want to know?
@@ -255,7 +374,7 @@ export default function Home() {
             />
           </div>
         ) : (
-          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden p-6">
+          <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col overflow-hidden p-6">
             <div
               ref={scrollRef}
               className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto pr-1 pb-4"
@@ -266,11 +385,11 @@ export default function Home() {
                   <AssistantMessage
                     answer={turn.answer}
                     entryNumber={index + 1}
-                    onFollowup={handleAsk}
+                    onFollowup={hasLiveSource ? handleAsk : undefined}
                     trace={turn.trace}
                     question={turn.question}
-                    sourceId={sourceId}
-                    onPin={handlePin}
+                    sourceId={sourceId ?? undefined}
+                    onPin={hasLiveSource ? handlePin : undefined}
                   />
                 </div>
               ))}
@@ -280,7 +399,22 @@ export default function Home() {
                 </div>
               )}
             </div>
-            <AskBox onAsk={handleAsk} loading={isAsking} className="mt-4 flex-shrink-0" />
+            {hasLiveSource ? (
+              <AskBox onAsk={handleAsk} loading={isAsking} className="mt-4 flex-shrink-0" />
+            ) : (
+              <div className="mt-4 flex-shrink-0 rounded-lg border border-border bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
+                This conversation&apos;s data source is no longer connected (sources expire after
+                inactivity). Start a{" "}
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="font-medium text-foreground underline underline-offset-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  new chat
+                </button>{" "}
+                to ask more questions.
+              </div>
+            )}
           </div>
         )}
       </main>
